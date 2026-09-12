@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store
+*.log
+.vite/
+
+# Delivery/source archives, not source of truth.
+files.zip
+retail-ops-repo.zip
