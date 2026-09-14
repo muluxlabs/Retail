@@ -10,9 +10,12 @@
  * like a local development database.
  */
 
+import { loadEnv } from './env.js';
 import { connect } from './pool.js';
 import { migrate, migrationStatus } from './migrate.js';
 import { seed } from './seed.js';
+
+loadEnv();
 
 const log = (m: string): void => {
   process.stdout.write(`${m}\n`);

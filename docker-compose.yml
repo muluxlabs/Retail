@@ -11,7 +11,7 @@ services:
       # system runs. Retail data is multilingual in practice.
       POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US"
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - retail_pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -203,11 +203,11 @@ export interface SeedResult {
 }
 
 export async function isSeeded(db: Kysely<Database>): Promise<boolean> {
-  const row = await db
-    .selectFrom('product')
-    .select(({ fn }) => fn.countAll<number>().as('n'))
-    .executeTakeFirst();
-  return (row?.n ?? 0) > 0;
+  const [products, branches] = await Promise.all([
+    db.selectFrom('product').select(({ fn }) => fn.countAll<number>().as('n')).executeTakeFirst(),
+    db.selectFrom('branch').select(({ fn }) => fn.countAll<number>().as('n')).executeTakeFirst(),
+  ]);
+  return (products?.n ?? 0) > 0 || (branches?.n ?? 0) > 0;
 }
 
 export async function seed(
@@ -226,259 +226,261 @@ export async function seed(
     log('  ! existing data present, seeding anyway (--force)');
   }
 
-  const rng = makeRng(20260914);
-  const now = Date.now();
+  return db.transaction().execute(async (tx) => {
+    const rng = makeRng(20260914);
+    const now = Date.now();
 
-  // -- organisation --------------------------------------------------------
-  const branchIds = new Map<string, string>();
-  for (const b of BRANCHES) {
-    const row = await db
-      .insertInto('branch')
-      .values({ code: b.code, name: b.name, kind: b.kind })
-      .returning('id')
-      .executeTakeFirstOrThrow();
-    branchIds.set(b.code, row.id);
-  }
-  log(`  + ${BRANCHES.length} branches`);
-
-  for (const b of BRANCHES) {
-    const branchId = branchIds.get(b.code);
-    if (branchId === undefined || b.kind === 'warehouse') continue;
-    const tills = b.code === 'KANA' ? 3 : 2;
-    for (let i = 1; i <= tills; i += 1) {
-      await db
-        .insertInto('terminal')
-        .values({ branch_id: branchId, code: `${b.code}-TILL-${i}` })
-        .execute();
+    // -- organisation --------------------------------------------------------
+    const branchIds = new Map<string, string>();
+    for (const b of BRANCHES) {
+      const row = await tx
+        .insertInto('branch')
+        .values({ code: b.code, name: b.name, kind: b.kind })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      branchIds.set(b.code, row.id);
     }
-  }
+    log(`  + ${BRANCHES.length} branches`);
 
-  await db.insertInto('role').values(ROLES).execute();
-
-  const personIds: string[] = [];
-  for (const p of PEOPLE) {
-    const row = await db
-      .insertInto('person')
-      .values({ full_name: p.full_name, phone: p.phone, email: p.email })
-      .returning('id')
-      .executeTakeFirstOrThrow();
-    personIds.push(row.id);
-    for (const roleId of p.roles) {
-      await db
-        .insertInto('person_role')
-        .values({ person_id: row.id, role_id: roleId, branch_id: null })
-        .execute();
+    for (const b of BRANCHES) {
+      const branchId = branchIds.get(b.code);
+      if (branchId === undefined || b.kind === 'warehouse') continue;
+      const tills = b.code === 'KANA' ? 3 : 2;
+      for (let i = 1; i <= tills; i += 1) {
+        await tx
+          .insertInto('terminal')
+          .values({ branch_id: branchId, code: `${b.code}-TILL-${i}` })
+          .execute();
+      }
     }
-  }
-  log(`  + ${PEOPLE.length} people, ${ROLES.length} roles`);
 
-  const auditor = personIds[0] ?? '';
-  const manager = personIds[2] ?? '';
-  const cashier = personIds[3] ?? '';
-  const receiver = personIds[5] ?? '';
+    await tx.insertInto('role').values(ROLES).execute();
 
-  // -- product master ------------------------------------------------------
-  const categoryIds = new Map<string, string>();
-  for (const name of CATEGORIES) {
-    const row = await db
-      .insertInto('product_category')
-      .values({ name, parent_id: null })
-      .returning('id')
-      .executeTakeFirstOrThrow();
-    categoryIds.set(name, row.id);
-  }
+    const personIds: string[] = [];
+    for (const p of PEOPLE) {
+      const row = await tx
+        .insertInto('person')
+        .values({ full_name: p.full_name, phone: p.phone, email: p.email })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      personIds.push(row.id);
+      for (const roleId of p.roles) {
+        await tx
+          .insertInto('person_role')
+          .values({ person_id: row.id, role_id: roleId, branch_id: null })
+          .execute();
+      }
+    }
+    log(`  + ${PEOPLE.length} people, ${ROLES.length} roles`);
 
-  interface Loaded { id: string; sku: string; cost: number; sellPackQty: number; buyPackQty: number }
-  const loaded: Loaded[] = [];
-  let packCount = 0;
-  let barcodeCount = 0;
+    const auditor = personIds[0] ?? '';
+    const manager = personIds[2] ?? '';
+    const cashier = personIds[3] ?? '';
+    const receiver = personIds[5] ?? '';
 
-  for (const p of PRODUCTS) {
-    const product = await db
-      .insertInto('product')
-      .values({
-        sku: p.sku,
-        name: p.name,
-        base_uom: p.baseUom,
-        is_weighed: p.isWeighed ?? false,
-        category_id: categoryIds.get(p.category) ?? null,
-        merged_into_id: null,
-      })
-      .returning('id')
-      .executeTakeFirstOrThrow();
+    // -- product master ------------------------------------------------------
+    const categoryIds = new Map<string, string>();
+    for (const name of CATEGORIES) {
+      const row = await tx
+        .insertInto('product_category')
+        .values({ name, parent_id: null })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      categoryIds.set(name, row.id);
+    }
 
-    let sellPackQty = 1;
-    let buyPackQty = 1;
-    for (const pack of p.packs) {
-      const packRow = await db
-        .insertInto('product_pack')
+    interface Loaded { id: string; sku: string; cost: number; sellPackQty: number; buyPackQty: number }
+    const loaded: Loaded[] = [];
+    let packCount = 0;
+    let barcodeCount = 0;
+
+    for (const p of PRODUCTS) {
+      const product = await tx
+        .insertInto('product')
         .values({
-          product_id: product.id,
-          label: pack.label,
-          qty_base: pack.qtyBase,
-          is_default_sell: pack.sell ?? false,
-          is_default_buy: pack.buy ?? false,
+          sku: p.sku,
+          name: p.name,
+          base_uom: p.baseUom,
+          is_weighed: p.isWeighed ?? false,
+          category_id: categoryIds.get(p.category) ?? null,
+          merged_into_id: null,
         })
         .returning('id')
         .executeTakeFirstOrThrow();
-      packCount += 1;
-      if (pack.sell === true) sellPackQty = pack.qtyBase;
-      if (pack.buy === true) buyPackQty = pack.qtyBase;
-      if (pack.barcode !== undefined) {
-        await db
-          .insertInto('barcode')
-          .values({ code: pack.barcode, pack_id: packRow.id, symbology: 'ean13' })
-          .execute();
-        barcodeCount += 1;
+
+      let sellPackQty = 1;
+      let buyPackQty = 1;
+      for (const pack of p.packs) {
+        const packRow = await tx
+          .insertInto('product_pack')
+          .values({
+            product_id: product.id,
+            label: pack.label,
+            qty_base: pack.qtyBase,
+            is_default_sell: pack.sell ?? false,
+            is_default_buy: pack.buy ?? false,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        packCount += 1;
+        if (pack.sell === true) sellPackQty = pack.qtyBase;
+        if (pack.buy === true) buyPackQty = pack.qtyBase;
+        if (pack.barcode !== undefined) {
+          await tx
+            .insertInto('barcode')
+            .values({ code: pack.barcode, pack_id: packRow.id, symbology: 'ean13' })
+            .execute();
+          barcodeCount += 1;
+        }
       }
+      loaded.push({ id: product.id, sku: p.sku, cost: p.cost, sellPackQty, buyPackQty });
     }
-    loaded.push({ id: product.id, sku: p.sku, cost: p.cost, sellPackQty, buyPackQty });
-  }
-  log(`  + ${PRODUCTS.length} products, ${packCount} packs, ${barcodeCount} barcodes`);
+    log(`  + ${PRODUCTS.length} products, ${packCount} packs, ${barcodeCount} barcodes`);
 
-  // -- trading history -----------------------------------------------------
-  // Opening balances, then receipts into the warehouse, then branch sales.
-  // Everything in base units, every row carrying both timestamps.
-  const movements: {
-    event_id: string; product_id: string; branch_id: string; qty_base: number;
-    unit_cost: number | null; reason: MovementReason; doc_type: string | null;
-    doc_id: string | null; actor_id: string; occurred_at: Date;
-  }[] = [];
+    // -- trading history -----------------------------------------------------
+    // Opening balances, then receipts into the warehouse, then branch sales.
+    // Everything in base units, every row carrying both timestamps.
+    const movements: {
+      event_id: string; product_id: string; branch_id: string; qty_base: number;
+      unit_cost: number | null; reason: MovementReason; doc_type: string | null;
+      doc_id: string | null; actor_id: string; occurred_at: Date;
+    }[] = [];
 
-  const tradingBranches = BRANCHES.filter((b) => b.kind === 'store').slice(0, 6);
-  const warehouseId = branchIds.get('WH') ?? '';
+    const tradingBranches = BRANCHES.filter((b) => b.kind === 'store').slice(0, 6);
+    const warehouseId = branchIds.get('WH') ?? '';
 
-  for (const product of loaded) {
-    // Warehouse opening balance.
-    movements.push({
-      event_id: uid(), product_id: product.id, branch_id: warehouseId,
-      qty_base: Math.round(400 + rng() * 600), unit_cost: product.cost,
-      reason: 'opening_balance', doc_type: null, doc_id: null,
-      actor_id: auditor, occurred_at: new Date(now - 60 * DAY),
-    });
-
-    for (const b of tradingBranches) {
-      const branchId = branchIds.get(b.code);
-      if (branchId === undefined) continue;
-
-      // Opening balance at the branch.
-      const opening = Math.round(40 + rng() * 160);
+    for (const product of loaded) {
+      // Warehouse opening balance.
       movements.push({
-        event_id: uid(), product_id: product.id, branch_id: branchId,
-        qty_base: opening, unit_cost: product.cost, reason: 'opening_balance',
-        doc_type: null, doc_id: null, actor_id: auditor,
-        occurred_at: new Date(now - 60 * DAY),
+        event_id: uid(), product_id: product.id, branch_id: warehouseId,
+        qty_base: Math.round(400 + rng() * 600), unit_cost: product.cost,
+        reason: 'opening_balance', doc_type: null, doc_id: null,
+        actor_id: auditor, occurred_at: new Date(now - 60 * DAY),
       });
 
-      // A couple of goods receipts, in whole buying packs, at drifting cost.
-      let received = 0;
-      const grns = 1 + Math.floor(rng() * 2);
-      for (let i = 0; i < grns; i += 1) {
-        const packs = 1 + Math.floor(rng() * 4);
-        const qty = packs * product.buyPackQty;
-        received += qty;
-        movements.push({
-          event_id: uid(), product_id: product.id, branch_id: branchId,
-          qty_base: qty,
-          unit_cost: Number((product.cost * (0.95 + rng() * 0.12)).toFixed(4)),
-          reason: 'grn', doc_type: 'GRN', doc_id: uid(), actor_id: receiver,
-          occurred_at: new Date(now - Math.floor(rng() * 45 + 5) * DAY),
-        });
-      }
+      for (const b of tradingBranches) {
+        const branchId = branchIds.get(b.code);
+        if (branchId === undefined) continue;
 
-      // Sales, kept strictly below stock so nothing seeds negative.
-      const available = opening + received;
-      let sold = 0;
-      const saleCount = 3 + Math.floor(rng() * 5);
-      for (let i = 0; i < saleCount; i += 1) {
-        const qty = Math.max(1, Math.round(rng() * (available * 0.06)));
-        if (sold + qty >= available * 0.7) break;
-        sold += qty;
+        // Opening balance at the branch.
+        const opening = Math.round(40 + rng() * 160);
         movements.push({
           event_id: uid(), product_id: product.id, branch_id: branchId,
-          qty_base: -qty, unit_cost: null, reason: 'sale', doc_type: 'SALE',
-          doc_id: uid(), actor_id: cashier,
-          occurred_at: new Date(now - Math.floor(rng() * 30) * DAY),
+          qty_base: opening, unit_cost: product.cost, reason: 'opening_balance',
+          doc_type: null, doc_id: null, actor_id: auditor,
+          occurred_at: new Date(now - 60 * DAY),
         });
+
+        // A couple of goods receipts, in whole buying packs, at drifting cost.
+        let received = 0;
+        const grns = 1 + Math.floor(rng() * 2);
+        for (let i = 0; i < grns; i += 1) {
+          const packs = 1 + Math.floor(rng() * 4);
+          const qty = packs * product.buyPackQty;
+          received += qty;
+          movements.push({
+            event_id: uid(), product_id: product.id, branch_id: branchId,
+            qty_base: qty,
+            unit_cost: Number((product.cost * (0.95 + rng() * 0.12)).toFixed(4)),
+            reason: 'grn', doc_type: 'GRN', doc_id: uid(), actor_id: receiver,
+            occurred_at: new Date(now - Math.floor(rng() * 45 + 5) * DAY),
+          });
+        }
+
+        // Sales, kept strictly below stock so nothing seeds negative.
+        const available = opening + received;
+        let sold = 0;
+        const saleCount = 3 + Math.floor(rng() * 5);
+        for (let i = 0; i < saleCount; i += 1) {
+          const qty = Math.max(1, Math.round(rng() * (available * 0.06)));
+          if (sold + qty >= available * 0.7) break;
+          sold += qty;
+          movements.push({
+            event_id: uid(), product_id: product.id, branch_id: branchId,
+            qty_base: -qty, unit_cost: null, reason: 'sale', doc_type: 'SALE',
+            doc_id: uid(), actor_id: cashier,
+            occurred_at: new Date(now - Math.floor(rng() * 30) * DAY),
+          });
+        }
       }
     }
-  }
 
-  for (let i = 0; i < movements.length; i += 200) {
-    await db.insertInto('stock_movement').values(movements.slice(i, i + 200)).execute();
-  }
-  log(`  + ${movements.length} stock movements`);
+    for (let i = 0; i < movements.length; i += 200) {
+      await tx.insertInto('stock_movement').values(movements.slice(i, i + 200)).execute();
+    }
+    log(`  + ${movements.length} stock movements`);
 
-  // -- the exception queue -------------------------------------------------
-  // Real work items, not log lines. Each needs a named human to clear it.
-  const kana = branchIds.get('KANA') ?? '';
-  const kern = branchIds.get('KERN') ?? '';
-  const lupane = branchIds.get('LUPANE') ?? '';
-  const charhons = loaded.find((p) => p.sku === 'CHAR-500');
-  const threeLeaves = loaded.find((p) => p.sku === 'TL-125');
-  const sugar = loaded.find((p) => p.sku === 'SUGAR-2KG');
+    // -- the exception queue -------------------------------------------------
+    // Real work items, not log lines. Each needs a named human to clear it.
+    const kana = branchIds.get('KANA') ?? '';
+    const kern = branchIds.get('KERN') ?? '';
+    const lupane = branchIds.get('LUPANE') ?? '';
+    const charhons = loaded.find((p) => p.sku === 'CHAR-500');
+    const threeLeaves = loaded.find((p) => p.sku === 'TL-125');
+    const sugar = loaded.find((p) => p.sku === 'SUGAR-2KG');
 
-  const exceptions = [
-    {
-      event_id: uid(), kind: 'unlisted_barcode_scan' as const, branch_id: kana,
-      terminal_id: null, actor_id: cashier, product_id: null,
-      detail: JSON.stringify({ rawBarcode: '9771234567003', attempts: 3 }),
-      value_impact: null, currency: null, occurred_at: new Date(now - 2 * DAY),
-    },
-    {
-      event_id: uid(), kind: 'negative_stock_override' as const, branch_id: kana,
-      terminal_id: null, actor_id: cashier, product_id: threeLeaves?.id ?? null,
-      detail: JSON.stringify({ available: 4, requested: 30, authorisedBy: 'Eunice Madimbe' }),
-      value_impact: -20.8, currency: 'USD', occurred_at: new Date(now - 1 * DAY),
-    },
-    {
-      event_id: uid(), kind: 'backdated_entry' as const, branch_id: kern,
-      terminal_id: null, actor_id: receiver, product_id: sugar?.id ?? null,
-      detail: JSON.stringify({ gapHours: 3648, docType: 'GRN', note: 'Goods dated Dec, entered May' }),
-      value_impact: 430.0, currency: 'USD', occurred_at: new Date(now - 5 * DAY),
-    },
-    {
-      event_id: uid(), kind: 'count_variance' as const, branch_id: kana,
-      terminal_id: null, actor_id: manager, product_id: charhons?.id ?? null,
-      detail: JSON.stringify({ expected: 380, counted: 500, variance: 120, docId: 'IC-10027' }),
-      value_impact: 162.0, currency: 'USD', occurred_at: new Date(now - 3 * DAY),
-    },
-    {
-      event_id: uid(), kind: 'price_override' as const, branch_id: lupane,
-      terminal_id: null, actor_id: cashier, product_id: sugar?.id ?? null,
-      detail: JSON.stringify({ listPrice: 2.99, chargedPrice: 2.2, reason: 'damaged packaging' }),
-      value_impact: -0.79, currency: 'USD', occurred_at: new Date(now - 6 * 3_600_000),
-    },
-    {
-      event_id: uid(), kind: 'cash_variance' as const, branch_id: kern,
-      terminal_id: null, actor_id: cashier, product_id: null,
-      detail: JSON.stringify({ declared: 412.5, counted: 398.15, shift: 'PM' }),
-      value_impact: -14.35, currency: 'USD', occurred_at: new Date(now - 4 * DAY),
-    },
-    {
-      event_id: uid(), kind: 'void_after_tender' as const, branch_id: kana,
-      terminal_id: null, actor_id: cashier, product_id: null,
-      detail: JSON.stringify({ receipt: 'R-88213', lines: 2, afterTender: true }),
-      value_impact: -18.4, currency: 'USD', occurred_at: new Date(now - 8 * 3_600_000),
-    },
-    {
-      event_id: uid(), kind: 'transit_loss' as const, branch_id: lupane,
-      terminal_id: null, actor_id: receiver, product_id: threeLeaves?.id ?? null,
-      detail: JSON.stringify({ dispatched: 240, received: 216, shortfall: 24 }),
-      value_impact: -19.2, currency: 'USD', occurred_at: new Date(now - 7 * DAY),
-    },
-  ];
+    const exceptions = [
+      {
+        event_id: uid(), kind: 'unlisted_barcode_scan' as const, branch_id: kana,
+        terminal_id: null, actor_id: cashier, product_id: null,
+        detail: JSON.stringify({ rawBarcode: '9771234567003', attempts: 3 }),
+        value_impact: null, currency: null, occurred_at: new Date(now - 2 * DAY),
+      },
+      {
+        event_id: uid(), kind: 'negative_stock_override' as const, branch_id: kana,
+        terminal_id: null, actor_id: cashier, product_id: threeLeaves?.id ?? null,
+        detail: JSON.stringify({ available: 4, requested: 30, authorisedBy: 'Eunice Madimbe' }),
+        value_impact: -20.8, currency: 'USD', occurred_at: new Date(now - 1 * DAY),
+      },
+      {
+        event_id: uid(), kind: 'backdated_entry' as const, branch_id: kern,
+        terminal_id: null, actor_id: receiver, product_id: sugar?.id ?? null,
+        detail: JSON.stringify({ gapHours: 3648, docType: 'GRN', note: 'Goods dated Dec, entered May' }),
+        value_impact: 430.0, currency: 'USD', occurred_at: new Date(now - 5 * DAY),
+      },
+      {
+        event_id: uid(), kind: 'count_variance' as const, branch_id: kana,
+        terminal_id: null, actor_id: manager, product_id: charhons?.id ?? null,
+        detail: JSON.stringify({ expected: 380, counted: 500, variance: 120, docId: 'IC-10027' }),
+        value_impact: 162.0, currency: 'USD', occurred_at: new Date(now - 3 * DAY),
+      },
+      {
+        event_id: uid(), kind: 'price_override' as const, branch_id: lupane,
+        terminal_id: null, actor_id: cashier, product_id: sugar?.id ?? null,
+        detail: JSON.stringify({ listPrice: 2.99, chargedPrice: 2.2, reason: 'damaged packaging' }),
+        value_impact: -0.79, currency: 'USD', occurred_at: new Date(now - 6 * 3_600_000),
+      },
+      {
+        event_id: uid(), kind: 'cash_variance' as const, branch_id: kern,
+        terminal_id: null, actor_id: cashier, product_id: null,
+        detail: JSON.stringify({ declared: 412.5, counted: 398.15, shift: 'PM' }),
+        value_impact: -14.35, currency: 'USD', occurred_at: new Date(now - 4 * DAY),
+      },
+      {
+        event_id: uid(), kind: 'void_after_tender' as const, branch_id: kana,
+        terminal_id: null, actor_id: cashier, product_id: null,
+        detail: JSON.stringify({ receipt: 'R-88213', lines: 2, afterTender: true }),
+        value_impact: -18.4, currency: 'USD', occurred_at: new Date(now - 8 * 3_600_000),
+      },
+      {
+        event_id: uid(), kind: 'transit_loss' as const, branch_id: lupane,
+        terminal_id: null, actor_id: receiver, product_id: threeLeaves?.id ?? null,
+        detail: JSON.stringify({ dispatched: 240, received: 216, shortfall: 24 }),
+        value_impact: -19.2, currency: 'USD', occurred_at: new Date(now - 7 * DAY),
+      },
+    ];
 
-  await db.insertInto('exception_event').values(exceptions).execute();
-  log(`  + ${exceptions.length} open exceptions`);
+    await tx.insertInto('exception_event').values(exceptions).execute();
+    log(`  + ${exceptions.length} open exceptions`);
 
-  return {
-    branches: BRANCHES.length,
-    people: PEOPLE.length,
-    products: PRODUCTS.length,
-    packs: packCount,
-    barcodes: barcodeCount,
-    movements: movements.length,
-    exceptions: exceptions.length,
-  };
+    return {
+      branches: BRANCHES.length,
+      people: PEOPLE.length,
+      products: PRODUCTS.length,
+      packs: packCount,
+      barcodes: barcodeCount,
+      movements: movements.length,
+      exceptions: exceptions.length,
+    };
+  });
 }

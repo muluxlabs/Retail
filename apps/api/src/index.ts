@@ -1,8 +1,10 @@
 /** API entrypoint. Reads configuration, connects, serves, shuts down cleanly. */
 
-import { connect, migrationStatus } from '@retail-ops/db';
+import { connect, loadEnv, migrationStatus } from '@retail-ops/db';
 
 import { buildServer } from './server.js';
+
+loadEnv();
 
 const port = Number(process.env['API_PORT'] ?? 3000);
 const host = process.env['API_HOST'] ?? '0.0.0.0';

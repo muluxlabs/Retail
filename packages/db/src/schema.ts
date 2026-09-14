@@ -82,6 +82,9 @@ export interface RoleTable {
 }
 
 export interface PersonRoleTable {
+  /** Surrogate key: see migration 002. branch_id is nullable, so it cannot
+   *  take part in a composite primary key. */
+  id: Generated<string>;
   person_id: string;
   role_id: string;
   /** NULL means the role is group-wide rather than scoped to one branch. */
