@@ -93,6 +93,24 @@ function translatePostgres(error: { code?: string; message?: string }): {
           },
         },
       };
+    case '42P01': // undefined_table
+    case '42703': // undefined_column
+      // The single most common way to reach this in a fresh deployment: the
+      // database is real and reachable, but `npm run db:migrate` was never
+      // run against it. Migrations do not run automatically on Vercel - see
+      // docs/01-deployment.md section 3. Surfaced as 503, not 500: the
+      // service is not broken, it is not yet provisioned.
+      return {
+        status: 503,
+        body: {
+          error: {
+            code: 'SCHEMA_NOT_MIGRATED',
+            message:
+              'The database is reachable but its schema is missing or out of date. ' +
+              'Run `npm run db:migrate` against it, then `npm run db:seed`.',
+          },
+        },
+      };
     default:
       return null;
   }

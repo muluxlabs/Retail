@@ -11,7 +11,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "migrations"],
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "scripts": {
     "build": "tsc -b",
     "migrate": "tsx src/cli.ts migrate",
@@ -22,9 +25,7 @@
   "dependencies": {
     "@retail-ops/domain": "*",
     "kysely": "0.29.1",
-    "pg": "8.23.0"
-  },
-  "devDependencies": {
+    "pg": "8.23.0",
     "@types/pg": "8.15.6"
   }
 }

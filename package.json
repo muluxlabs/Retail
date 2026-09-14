@@ -26,14 +26,14 @@
     "db:reset": "npm run reset -w @retail-ops/db"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
     "vitest": "5.0.0",
-    "tsx": "4.23.13",
-    "@types/node": "22.20.1"
+    "tsx": "4.23.13"
   },
   "dependencies": {
     "@retail-ops/api": "*",
     "@retail-ops/db": "*",
-    "@retail-ops/domain": "*"
+    "@retail-ops/domain": "*",
+    "typescript": "5.9.3",
+    "@types/node": "22.20.1"
   }
 }
