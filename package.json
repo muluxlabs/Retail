@@ -3,8 +3,13 @@
   "private": true,
   "type": "module",
   "packageManager": "npm@10.9.7",
-  "engines": { "node": ">=22" },
-  "workspaces": ["packages/*", "apps/*"],
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "tsc -b",
@@ -14,7 +19,11 @@
     "db:migrate": "npm run migrate -w @retail-ops/db",
     "dev:api": "npm run dev -w @retail-ops/api",
     "dev:web": "npm run dev -w @retail-ops/web",
-    "lint": "tsc -b --noEmit"
+    "lint": "tsc -b --noEmit",
+    "db:down": "docker compose down",
+    "db:seed": "npm run seed -w @retail-ops/db",
+    "db:status": "npm run status -w @retail-ops/db",
+    "db:reset": "npm run reset -w @retail-ops/db"
   },
   "devDependencies": {
     "typescript": "5.9.3",

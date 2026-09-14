@@ -16,22 +16,22 @@ import { DomainError, LedgerImmutable, NegativeStockBlocked } from './errors.js'
 import type { MasterData } from './packs.js';
 import { packsToBase } from './packs.js';
 import {
-  RECEIPT_REASONS,
-  type ExceptionKind,
-  type ExceptionState,
-  type MovementReason,
-  type StockMovement,
-  type Uuid,
+  assertStockAvailable,
+  backdateGapHours,
+  BACKDATE_THRESHOLD_MS,
+  computeCountVariance,
+  isBackdated,
+  weightedAverageCost,
+} from './policy.js';
+import type {
+  ExceptionKind,
+  ExceptionState,
+  MovementReason,
+  StockMovement,
+  Uuid,
 } from './types.js';
 
-/**
- * Gap between `occurredAt` and `recordedAt` beyond which a movement is
- * treated as backdated and raises an exception.
- *
- * Matches the `backdated_movement` view in 001_core.sql. TGRN-10001 carried a
- * five-month gap and the old platform shipped a report normalising it.
- */
-export const BACKDATE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+export { BACKDATE_THRESHOLD_MS } from './policy.js';
 
 /** A movement after the server has assigned it a sequence and a receive time. */
 export interface PostedMovement extends StockMovement {
@@ -143,10 +143,6 @@ export interface LedgerOptions {
   newId?: () => Uuid;
 }
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 export class Ledger {
   readonly #master: MasterData;
   readonly #now: () => Date;
@@ -183,17 +179,9 @@ export class Ledger {
    * 0.11% gross margin.
    */
   wac(productId: Uuid, branchId: Uuid): number | null {
-    let value = 0;
-    let qty = 0;
-    for (const m of this.#movements) {
-      if (m.productId !== productId || m.branchId !== branchId) continue;
-      if (m.unitCost === null) continue;
-      if (!RECEIPT_REASONS.includes(m.reason)) continue;
-      value += m.qtyBase * m.unitCost;
-      qty += m.qtyBase;
-    }
-    if (qty === 0) return null; // NULLIF(SUM(qty_base), 0)
-    return value / qty;
+    return weightedAverageCost(
+      this.#movements.filter((m) => m.productId === productId && m.branchId === branchId),
+    );
   }
 
   /** Resolve a scan to product and pack multiplier. Throws `UnlistedBarcode`. */
@@ -214,9 +202,7 @@ export class Ledger {
 
   /** Movements whose backdate gap exceeds the threshold. The `backdated_movement` view. */
   backdatedMovements(): readonly PostedMovement[] {
-    return this.#movements.filter(
-      (m) => m.recordedAt.getTime() - m.occurredAt.getTime() > BACKDATE_THRESHOLD_MS,
-    );
+    return this.#movements.filter((m) => isBackdated(m.occurredAt, m.recordedAt));
   }
 
   // -- writes ---------------------------------------------------------------
@@ -249,11 +235,10 @@ export class Ledger {
 
     this.#master.assertTransactable(input.productId);
 
-    if (input.qtyBase < 0 && input.allowNegative !== true) {
-      const available = this.onHand(input.productId, input.branchId);
-      if (available + input.qtyBase < 0) {
-        throw new NegativeStockBlocked(available, Math.abs(input.qtyBase));
-      }
+    if (input.qtyBase < 0) {
+      assertStockAvailable(this.onHand(input.productId, input.branchId), input.qtyBase, {
+        allowNegative: input.allowNegative ?? false,
+      });
     }
 
     const seq = this.#nextSeq;
@@ -281,8 +266,7 @@ export class Ledger {
     this.#byEventId.set(eventId, seq);
 
     // Backdating is detectable because both timestamps are stored (R5).
-    const gapMs = recordedAt.getTime() - occurredAt.getTime();
-    if (gapMs > BACKDATE_THRESHOLD_MS) {
+    if (isBackdated(occurredAt, recordedAt)) {
       this.raiseException({
         kind: 'backdated_entry',
         branchId: input.branchId,
@@ -292,7 +276,7 @@ export class Ledger {
         occurredAt,
         detail: {
           movementSeq: seq,
-          gapHours: round2(gapMs / 3_600_000),
+          gapHours: backdateGapHours(occurredAt, recordedAt),
         },
       });
     }
@@ -410,12 +394,13 @@ export class Ledger {
    */
   postCount(input: CountInput): CountResult {
     const expected = this.onHand(input.productId, input.branchId);
-    const variance = input.countedBase - expected;
+    const unitCost = this.wac(input.productId, input.branchId);
+    const assessment = computeCountVariance(expected, input.countedBase, unitCost);
+    const { variance, valueImpact } = assessment;
     if (variance === 0) {
       return { expected, counted: input.countedBase, variance, adjustmentSeq: null };
     }
 
-    const unitCost = this.wac(input.productId, input.branchId);
     const occurredAt = input.occurredAt ?? this.#now();
 
     const adjustmentSeq = this.post({
@@ -448,8 +433,8 @@ export class Ledger {
         movementSeq: adjustmentSeq,
         docId: input.docId,
       },
-      valueImpact: unitCost === null || unitCost === 0 ? null : round2(variance * unitCost),
-      currency: unitCost === null || unitCost === 0 ? null : 'USD',
+      valueImpact,
+      currency: valueImpact === null ? null : 'USD',
     });
 
     return { expected, counted: input.countedBase, variance, adjustmentSeq };

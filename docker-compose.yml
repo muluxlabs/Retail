@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: retail_ops_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: retail
+      POSTGRES_PASSWORD: retail
+      POSTGRES_DB: retail_ops
+      # Deterministic collation, so ORDER BY is identical everywhere the
+      # system runs. Retail data is multilingual in practice.
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US"
+    ports:
+      - "5432:5432"
+    volumes:
+      - retail_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The API waits on this, not on a fixed sleep.
+      test: ["CMD-SHELL", "pg_isready -U retail -d retail_ops"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  retail_pgdata:

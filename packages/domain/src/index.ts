@@ -10,4 +10,5 @@ export * from './errors.js';
 export * from './types.js';
 export * from './barcode.js';
 export * from './packs.js';
+export * from './policy.js';
 export * from './ledger.js';

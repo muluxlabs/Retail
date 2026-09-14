@@ -1,0 +1,30 @@
+{
+  "name": "@retail-ops/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "migrations"],
+  "scripts": {
+    "build": "tsc -b",
+    "migrate": "tsx src/cli.ts migrate",
+    "seed": "tsx src/cli.ts seed",
+    "status": "tsx src/cli.ts status",
+    "reset": "tsx src/cli.ts reset"
+  },
+  "dependencies": {
+    "@retail-ops/domain": "*",
+    "kysely": "0.29.1",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.6"
+  }
+}
