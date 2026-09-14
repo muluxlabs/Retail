@@ -13,3 +13,6 @@ coverage/
 # Delivery/source archives, not source of truth.
 files.zip
 retail-ops-repo.zip
+
+.vercel
+.env*
