@@ -56,15 +56,57 @@ const MAX_MEM = 128 * N * R * 2;
 export const MIN_PASSWORD_LENGTH = 10;
 
 /**
- * Passwords this system will not accept regardless of length.
- * Short list on purpose: it catches the seeded-then-never-changed case and
- * the obvious shared-terminal choices, without pretending to be a full
- * breach corpus.
+ * Tokens a password may not be built around.
+ *
+ * Matched as a SUBSTRING after normalisation, not as a whole string. An
+ * earlier version compared only the whole value, so "password" was rejected
+ * while "password12" sailed through - which is the shape almost every weak
+ * password actually takes.
+ *
+ * The product and domain words are here deliberately. A password made from
+ * the name of the thing it protects is the first guess anyone makes, and this
+ * system is called Retail Operations.
  */
-const FORBIDDEN = new Set([
-  'password', 'password1', 'passw0rd', 'letmein', 'qwertyuiop', 'administrator',
-  'retailops', 'changeme', 'change-me', 'welcome1', '1234567890', 'iloveyou',
-]);
+const BANNED_TOKENS = [
+  'password', 'passwd', 'letmein', 'welcome', 'qwerty', 'asdfgh', 'zxcvbn',
+  'admin', 'administrator', 'login', 'secret', 'changeme', 'iloveyou',
+  'monkey', 'dragon', 'sunshine', 'default', 'temp', 'test1234',
+  // The system, the business, and the place.
+  'retail', 'retailops', 'supermarket', 'grocery', 'stock', 'inventory',
+  'zimbabwe', 'harare', 'bulawayo',
+];
+
+/** Runs we treat as having no entropy, forwards or backwards. */
+const SEQUENCES = [
+  '0123456789',
+  'abcdefghijklmnopqrstuvwxyz',
+  'qwertyuiop',
+  'asdfghjkl',
+  'zxcvbnm',
+];
+
+const RUN_LENGTH = 4;
+
+function normalise(password: string): string {
+  return password.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** The word a password is built around, with decorative digits stripped off. */
+function core(normalised: string): string {
+  return normalised.replace(/^[0-9]+/, '').replace(/[0-9]+$/, '');
+}
+
+function findSequentialRun(normalised: string): string | null {
+  for (const sequence of SEQUENCES) {
+    for (let i = 0; i + RUN_LENGTH <= sequence.length; i += 1) {
+      const run = sequence.slice(i, i + RUN_LENGTH);
+      if (normalised.includes(run)) return run;
+      const reversed = [...run].reverse().join('');
+      if (normalised.includes(reversed)) return reversed;
+    }
+  }
+  return null;
+}
 
 export interface PasswordProblem {
   ok: false;
@@ -74,9 +116,10 @@ export interface PasswordProblem {
 export type PasswordCheck = { ok: true } | PasswordProblem;
 
 /**
- * Composition rules deliberately favour length over character-class theatre:
- * forced symbols produce `Password1!` on a sticky note, which is precisely the
- * failure mode HANDOFF §2.6 describes with shared and unattributable accounts.
+ * Composition rules deliberately favour length and unpredictability over
+ * character-class theatre: forced symbols produce `Password1!` on a sticky
+ * note, which is precisely the failure mode HANDOFF section 2.6 describes
+ * with shared and unattributable accounts.
  */
 export function checkPasswordStrength(password: string, email?: string): PasswordCheck {
   if (password.length < MIN_PASSWORD_LENGTH) {
@@ -85,19 +128,56 @@ export function checkPasswordStrength(password: string, email?: string): Passwor
   if (password.length > 200) {
     return { ok: false, reason: 'Password must be 200 characters or fewer.' };
   }
-  const normalised = password.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (FORBIDDEN.has(normalised)) {
-    return { ok: false, reason: 'That password is too easily guessed. Choose another.' };
+
+  const normalised = normalise(password);
+  const stem = core(normalised);
+
+  // Built around a banned word: "retail@1234", "password12", "Welcome2026".
+  for (const token of BANNED_TOKENS) {
+    if (stem === token || normalised === token) {
+      return {
+        ok: false,
+        reason: `"${token}" is too easily guessed, with or without numbers on the end.`,
+      };
+    }
+    // Or the token dominates what was chosen.
+    if (token.length >= 5 && normalised.includes(token) && token.length * 2 >= normalised.length) {
+      return {
+        ok: false,
+        reason: `Password is mostly the word "${token}". Choose something unrelated to this system.`,
+      };
+    }
   }
+
+  const run = findSequentialRun(normalised);
+  if (run !== null) {
+    return { ok: false, reason: `Password contains the predictable run "${run}".` };
+  }
+
   if (email !== undefined) {
     const local = email.split('@')[0]?.toLowerCase() ?? '';
+    const domain = email.split('@')[1]?.split('.')[0]?.toLowerCase() ?? '';
     if (local.length >= 3 && normalised.includes(local)) {
       return { ok: false, reason: 'Password must not contain your email address.' };
     }
+    if (domain.length >= 4 && normalised.includes(domain)) {
+      return { ok: false, reason: 'Password must not contain your organisation name.' };
+    }
   }
+
   if (new Set(password).size < 5) {
     return { ok: false, reason: 'Password is too repetitive. Choose something less predictable.' };
   }
+
+  // A single word with digits tacked on is the most common weak shape there
+  // is. Require some structure beyond that.
+  if (/^[a-z]+[0-9]*$/.test(normalised) && stem.length < 8) {
+    return {
+      ok: false,
+      reason: 'One short word with numbers on the end is too easy to guess. Use several words.',
+    };
+  }
+
   return { ok: true };
 }
 
