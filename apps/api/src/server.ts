@@ -5,12 +5,16 @@
  * module-level singleton, so tests can hand it a transaction and roll back.
  */
 
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import type { Database } from '@retail-ops/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 
 import { registerErrorHandler } from './errors.js';
+import { authPlugin } from './plugins/auth.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { registerUserRoutes } from './routes/users.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerExceptionRoutes } from './routes/exceptions.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -29,6 +33,8 @@ export interface ServerOptions {
   db: Kysely<Database>;
   corsOrigins?: string[];
   logger?: boolean;
+  /** Signs session cookies. Must be set to a real secret in production. */
+  cookieSecret?: string;
 }
 
 export async function buildServer(options: ServerOptions): Promise<FastifyInstance> {
@@ -41,16 +47,26 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 
   app.decorate('db', options.db);
 
+  // Credentials must be allowed for the session cookie, and a wildcard origin
+  // is invalid alongside credentials, so production must list real origins.
   await app.register(cors, {
     origin: options.corsOrigins ?? true,
     credentials: true,
   });
+
+  await app.register(cookie, {
+    secret: options.cookieSecret ?? process.env['SESSION_SECRET'] ?? '',
+  });
+
+  await app.register(authPlugin);
 
   registerErrorHandler(app);
 
   await app.register(registerHealthRoutes);
   await app.register(
     async (api) => {
+      await api.register(registerAuthRoutes);
+      await api.register(registerUserRoutes);
       await api.register(registerReferenceRoutes);
       await api.register(registerProductRoutes);
       await api.register(registerStockRoutes);

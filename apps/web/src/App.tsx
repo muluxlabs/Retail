@@ -1,20 +1,50 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
+import { useAuth } from './lib/auth.js';
+import { Spinner } from './lib/ui.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Exceptions } from './pages/Exceptions.js';
 import { Ledger } from './pages/Ledger.js';
+import { ChangePassword, Login } from './pages/Login.js';
 import { Products } from './pages/Products.js';
 import { Stock } from './pages/Stock.js';
+import { Users } from './pages/Users.js';
 
+/**
+ * Navigation is filtered by capability, so a cashier does not see a Stock tab
+ * that would only 403. This is presentation: the API refuses on its own
+ * authority regardless of what is rendered here.
+ */
 const NAV = [
-  { to: '/', label: 'Overview', end: true },
-  { to: '/exceptions', label: 'Exceptions' },
-  { to: '/stock', label: 'Stock' },
-  { to: '/products', label: 'Item master' },
-  { to: '/ledger', label: 'Ledger' },
+  { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
+  { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
+  { to: '/stock', label: 'Stock', permission: 'stock.read' },
+  { to: '/products', label: 'Item master', permission: 'product.read' },
+  { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
+  { to: '/users', label: 'Staff', permission: 'user.read' },
 ];
 
 export function App() {
+  const { user, loading, can } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="grid h-full place-items-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (user === null) return <Login />;
+
+  // A seeded or reset password blocks everything else. The API enforces this
+  // too; this is the matching wall in the UI rather than a suggestion.
+  if (user.mustChangePassword) return <ChangePassword />;
+
+  const visible = NAV.filter((item) => can(item.permission));
+  // Land people on the first screen they are actually allowed to see.
+  const home = visible[0]?.to ?? '/products';
+
   return (
     <div className="flex h-full flex-col">
       <header className="border-ink-200/80 sticky top-0 z-20 border-b bg-white/85 backdrop-blur-sm">
@@ -22,10 +52,7 @@ export function App() {
           <div className="flex items-center gap-2.5">
             <div className="bg-accent-600 grid size-7 place-items-center rounded-md">
               <svg viewBox="0 0 24 24" className="size-4 text-white" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z"
-                />
+                <path fill="currentColor" d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z" />
               </svg>
             </div>
             <div className="leading-none">
@@ -35,7 +62,7 @@ export function App() {
           </div>
 
           <nav className="flex items-center gap-0.5">
-            {NAV.map((item) => (
+            {visible.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -52,18 +79,70 @@ export function App() {
               </NavLink>
             ))}
           </nav>
+
+          <div className="ml-auto">
+            <UserMenu />
+          </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-6">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/exceptions" element={<Exceptions />} />
-          <Route path="/stock" element={<Stock />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/ledger" element={<Ledger />} />
+          <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
+          <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
+          <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
+          <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
+          <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
+          <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
+          <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>
+    </div>
+  );
+}
+
+function Guard({
+  permission,
+  home,
+  children,
+}: {
+  permission: string;
+  home: string;
+  children: React.ReactNode;
+}) {
+  const { can } = useAuth();
+  if (!can(permission)) return <Navigate to={home} replace />;
+  return <>{children}</>;
+}
+
+function UserMenu() {
+  const { user, signOut } = useAuth();
+  if (user === null) return null;
+
+  const initials = user.fullName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="hidden text-right sm:block">
+        <div className="text-[12px] font-medium leading-tight">{user.fullName}</div>
+        <div className="text-ink-400 text-[10.5px] leading-tight">
+          {user.roles.map((r) => r.replace(/_/g, ' ')).join(', ')}
+        </div>
+      </div>
+      <div className="bg-ink-200 text-ink-700 grid size-7 place-items-center rounded-full text-[10.5px] font-semibold">
+        {initials}
+      </div>
+      <button
+        onClick={() => void signOut()}
+        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 rounded-lg px-2 py-1.5 text-[12px] font-medium transition"
+      >
+        Sign out
+      </button>
     </div>
   );
 }

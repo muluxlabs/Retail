@@ -41,6 +41,25 @@ function assertLocal(connectionString: string): void {
   }
 }
 
+/**
+ * Print sign-in details once. These are never recoverable afterwards: only the
+ * scrypt hash is stored, and every account must change its password on first
+ * use.
+ */
+function printAccounts(accounts: { email: string; password: string | null }[]): void {
+  if (accounts.length === 0) return;
+  const width = Math.max(...accounts.map((a) => a.email.length));
+  log('');
+  log('  Sign-in details (shown once, not recoverable):');
+  log('  ' + '-'.repeat(width + 24));
+  for (const a of accounts) {
+    log(`  ${a.email.padEnd(width)}   ${a.password ?? '(unchanged)'}`);
+  }
+  log('  ' + '-'.repeat(width + 24));
+  log('  Every account must set a new password at first sign-in.');
+  log('');
+}
+
 async function main(): Promise<number> {
   const command = process.argv[2] ?? 'migrate';
   const force = process.argv.includes('--force');
@@ -63,6 +82,7 @@ async function main(): Promise<number> {
           `Done: ${result.products} products, ${result.movements} movements, ` +
             `${result.exceptions} open exceptions across ${result.branches} branches.`,
         );
+        printAccounts(result.accounts);
         return 0;
       }
 
@@ -84,6 +104,7 @@ async function main(): Promise<number> {
         log('Seeding...');
         const result = await seed(db, { log });
         log(`Reset complete: ${result.products} products, ${result.movements} movements.`);
+        printAccounts(result.accounts);
         return 0;
       }
 

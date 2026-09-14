@@ -15,6 +15,12 @@ import { DomainError } from '@retail-ops/domain';
 import { ZodError } from 'zod';
 
 const STATUS_BY_CODE: Record<string, number> = {
+  // We do not know who you are.
+  NOT_AUTHENTICATED: 401,
+  // We know who you are, and your role does not allow this.
+  NOT_PERMITTED: 403,
+  // A seeded or reset password must be replaced before the system is usable.
+  PASSWORD_CHANGE_REQUIRED: 403,
   // The stock guard fired. Not the caller's fault, not a validation error:
   // it is a conflict with the current state of the ledger.
   NEGATIVE_STOCK_BLOCKED: 409,

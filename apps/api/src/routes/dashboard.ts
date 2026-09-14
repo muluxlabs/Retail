@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 
 export async function registerDashboardRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/dashboard', async () => {
+  app.get('/dashboard', { onRequest: [app.requirePermission('dashboard.read')] }, async () => {
     const [inventory, exceptions, backdated, negative, master, recent] = await Promise.all([
       // Total inventory at weighted-average cost.
       app.db

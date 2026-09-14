@@ -3,7 +3,7 @@
 import type { FastifyInstance } from 'fastify';
 
 export async function registerReferenceRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/branches', async () =>
+  app.get('/branches', { onRequest: [app.requireAuth] }, async () =>
     app.db
       .selectFrom('branch')
       .select(['id', 'code', 'name', 'kind', 'is_active as isActive'])
@@ -13,7 +13,7 @@ export async function registerReferenceRoutes(app: FastifyInstance): Promise<voi
       .execute(),
   );
 
-  app.get('/people', async () =>
+  app.get('/people', { onRequest: [app.requireAuth] }, async () =>
     app.db
       .selectFrom('person')
       .select(['id', 'full_name as fullName', 'phone', 'email', 'is_active as isActive'])
@@ -22,7 +22,7 @@ export async function registerReferenceRoutes(app: FastifyInstance): Promise<voi
       .execute(),
   );
 
-  app.get('/roles', async () =>
+  app.get('/roles', { onRequest: [app.requireAuth] }, async () =>
     app.db.selectFrom('role').select(['id', 'name']).orderBy('name', 'asc').execute(),
   );
 }

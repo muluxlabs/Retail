@@ -18,6 +18,7 @@
 import { ean13CheckDigit } from '@retail-ops/domain';
 import type { Kysely } from 'kysely';
 
+import { generateTemporaryPassword, hashPassword } from './password.js';
 import type { Database, MovementReason } from './schema.js';
 
 /** Build a genuinely valid EAN-13 from a 12-digit stem. */
@@ -56,13 +57,29 @@ const ROLES: { id: string; name: string }[] = [
   { id: 'administrator', name: 'Administrator' },
 ];
 
-const PEOPLE: { full_name: string; phone: string | null; email: string | null; roles: string[] }[] = [
-  { full_name: 'Group Auditor', phone: '0771000001', email: 'auditor@example.co.zw', roles: ['auditor'] },
-  { full_name: 'System Administrator', phone: null, email: 'admin@example.co.zw', roles: ['administrator'] },
-  { full_name: 'Eunice Madimbe', phone: '0776058588', email: null, roles: ['branch_manager'] },
+interface SeedPerson {
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  roles: string[];
+  /** Sign-in address. Omit for a person who exists but cannot log in. */
+  login?: string;
+}
+
+const PEOPLE: SeedPerson[] = [
+  { full_name: 'System Administrator', phone: null, email: 'admin@retailops.local',
+    login: 'admin@retailops.local', roles: ['administrator'] },
+  { full_name: 'Group Auditor', phone: '0771000001', email: 'auditor@retailops.local',
+    login: 'auditor@retailops.local', roles: ['auditor'] },
+  { full_name: 'Eunice Madimbe', phone: '0776058588', email: 'eunice@retailops.local',
+    login: 'eunice@retailops.local', roles: ['branch_manager'] },
+  { full_name: 'Tendai Moyo', phone: '0778112233', email: 'tendai@retailops.local',
+    login: 'tendai@retailops.local', roles: ['receiver', 'stock_controller'] },
+  // Deliberately without a login: HANDOFF section 2.6 records cashiers with no
+  // email and no phone. They exist as people and can be named on a movement,
+  // but they cannot sign in to the back office.
   { full_name: 'Dzidzai Chikuku', phone: '0773368414', email: null, roles: ['cashier'] },
   { full_name: 'Hazel Gatsi', phone: '0772440190', email: null, roles: ['cashier'] },
-  { full_name: 'Tendai Moyo', phone: '0778112233', email: null, roles: ['receiver', 'stock_controller'] },
 ];
 
 interface SeedProduct {
@@ -193,6 +210,8 @@ function makeRng(seed: number): () => number {
 }
 
 export interface SeedResult {
+  /** Credentials created, and the admin password if one was generated. */
+  accounts: { email: string; password: string | null }[];
   branches: number;
   people: number;
   products: number;
@@ -254,9 +273,14 @@ export async function seed(
       }
     }
 
-    await tx.insertInto('role').values(ROLES).execute();
+    // Roles now come from migration 003. Kept here only to reconcile a
+    // database migrated before that change.
+    await tx.insertInto('role').values(ROLES).onConflict((oc) => oc.doNothing()).execute();
 
     const personIds: string[] = [];
+    const personByName = new Map<string, string>();
+    const accounts: { email: string; password: string | null }[] = [];
+
     for (const p of PEOPLE) {
       const row = await tx
         .insertInto('person')
@@ -264,19 +288,46 @@ export async function seed(
         .returning('id')
         .executeTakeFirstOrThrow();
       personIds.push(row.id);
+      personByName.set(p.full_name, row.id);
+
       for (const roleId of p.roles) {
         await tx
           .insertInto('person_role')
           .values({ person_id: row.id, role_id: roleId, branch_id: null })
           .execute();
       }
-    }
-    log(`  + ${PEOPLE.length} people, ${ROLES.length} roles`);
 
-    const auditor = personIds[0] ?? '';
-    const manager = personIds[2] ?? '';
-    const cashier = personIds[3] ?? '';
-    const receiver = personIds[5] ?? '';
+      if (p.login === undefined) continue;
+
+      // The administrator password may be supplied by the environment so a
+      // deployment can seed a known credential; everyone else gets a generated
+      // one. Either way must_change_password is true, so a shared credential
+      // cannot stay shared.
+      const isAdmin = p.roles.includes('administrator');
+      const supplied = isAdmin ? process.env['ADMIN_PASSWORD'] : undefined;
+      const password =
+        supplied !== undefined && supplied !== '' ? supplied : generateTemporaryPassword();
+
+      await tx
+        .insertInto('user_credential')
+        .values({
+          person_id: row.id,
+          email: p.login,
+          password_hash: await hashPassword(password),
+          must_change_password: true,
+        })
+        .execute();
+
+      accounts.push({ email: p.login, password });
+    }
+    log(`  + ${PEOPLE.length} people, ${ROLES.length} roles, ${accounts.length} sign-ins`);
+
+    // Looked up by name rather than by index: the order of PEOPLE is
+    // presentational and must not silently reassign who did what.
+    const auditor = personByName.get('Group Auditor') ?? '';
+    const manager = personByName.get('Eunice Madimbe') ?? '';
+    const cashier = personByName.get('Dzidzai Chikuku') ?? '';
+    const receiver = personByName.get('Tendai Moyo') ?? '';
 
     // -- product master ------------------------------------------------------
     const categoryIds = new Map<string, string>();
@@ -474,6 +525,7 @@ export async function seed(
     log(`  + ${exceptions.length} open exceptions`);
 
     return {
+      accounts,
       branches: BRANCHES.length,
       people: PEOPLE.length,
       products: PRODUCTS.length,

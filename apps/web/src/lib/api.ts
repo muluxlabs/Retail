@@ -6,6 +6,13 @@
  * packages/domain and are enforced server-side.
  */
 
+/**
+ * Where the API lives. Empty in development, where Vite proxies /api to the
+ * local server, and set at build time when the frontend is deployed apart
+ * from the API.
+ */
+const API_BASE = (import.meta.env['VITE_API_URL'] ?? '').replace(/\/$/, '');
+
 export interface ApiErrorBody {
   error: { code: string; message: string; detail?: Record<string, unknown> };
 }
@@ -31,8 +38,10 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(API_BASE + path, {
     ...init,
+    // The session is an httpOnly cookie; without this it is never sent.
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -193,9 +202,70 @@ export interface Dashboard {
   activity: { day: string; unitsSold: number; unitsReceived: number }[];
 }
 
+export interface CurrentUser {
+  personId: string;
+  fullName: string;
+  email: string;
+  roles: string[];
+  permissions: string[];
+  branchIds: string[];
+  mustChangePassword: boolean;
+}
+
+export interface UserRow {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  isActive: boolean;
+  createdAt: string;
+  loginEmail: string | null;
+  lastLoginAt: string | null;
+  mustChangePassword: boolean | null;
+  lockedUntil: string | null;
+  canSignIn: boolean;
+  roles: { roleId: string; branchId: string | null; branchCode: string | null }[];
+}
+
 // -- endpoints ---------------------------------------------------------------
 
 export const api = {
+  // -- authentication --------------------------------------------------------
+  login: (body: { email: string; password: string }) =>
+    request<{ user: CurrentUser; expiresAt: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+
+  me: () => request<CurrentUser>('/api/auth/me'),
+
+  changePassword: (body: { currentPassword: string; newPassword: string }) =>
+    request<{ ok: true }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // -- staff accounts --------------------------------------------------------
+  users: () => request<UserRow[]>('/api/users'),
+
+  createUser: (body: {
+    fullName: string;
+    email: string;
+    roleIds: string[];
+    branchId: string | null;
+  }) =>
+    request<{ id: string; fullName: string; email: string; temporaryPassword?: string }>(
+      '/api/users',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  updateUser: (id: string, body: { isActive?: boolean; roleIds?: string[] }) =>
+    request<{ ok: true }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  resetPassword: (id: string) =>
+    request<{ temporaryPassword: string }>(`/api/users/${id}/reset-password`, { method: 'POST' }),
+
   dashboard: () => request<Dashboard>('/api/dashboard'),
 
   branches: () => request<Branch[]>('/api/branches'),
