@@ -118,16 +118,27 @@ wraps Fastify) and `vercel.json` (routing and build configuration).
 2. Leave the framework preset as detected; `vercel.json` overrides what matters.
 3. Add these environment variables, for **Production** and **Preview**:
 
-| Variable | Value |
-|---|---|
-| `DATABASE_URL` | the **pooled** Neon string |
-| `SESSION_SECRET` | `openssl rand -hex 32` |
+| Variable | Required | Value | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | **yes** | the **pooled** Neon string | Set automatically if you added Neon through Vercel Storage. Check it is the `-pooler` one. |
+| `SESSION_SECRET` | **yes** | `openssl rand -hex 32` | Signs the session cookie. Any long random string. |
+| `NODE_ENV` | **no — do not set** | — | See below. Setting it breaks the build. |
+| `CORS_ORIGINS` | no | — | Only if the frontend is on a different domain to the API. |
+| `VITE_API_URL` | no | — | Only if the frontend is on a different domain to the API. |
+| `ADMIN_PASSWORD` | no | — | Read only by `db:seed`, which you run locally. Pointless on Vercel. |
+
+**The build does not need `DATABASE_URL`.** Nothing connects to the database
+while compiling, so a missing or wrong connection string produces a deployment
+that builds fine and then returns 500 on every API call. If the build itself
+fails, the database is not the cause.
 
 4. Deploy.
 
 ### Do NOT set `NODE_ENV=production` on Vercel
 
-It looks harmless and it breaks the build. Vercel applies project environment
+It looks harmless and it breaks the build. Verified on npm 10.9.3: a clean
+install with `NODE_ENV=production` produces 76 packages and no `tsc`; the same
+install with `include=dev` produces 180 packages and `tsc` is present. Vercel applies project environment
 variables to `npm install` as well as to the running function, and npm with
 `NODE_ENV=production` skips `devDependencies` — which is where `typescript`
 and `vite` live. The build then fails with:
@@ -137,10 +148,12 @@ sh: line 1: tsc: command not found
 Error: Command "npm run build" exited with 127
 ```
 
-Two defences are in place, and neither needs you to set the variable:
+Three defences are in place, and none needs you to set the variable:
 
-- `vercel.json` installs with `npm install --include=dev`, so the toolchain is
-  present even if something sets `NODE_ENV`
+- `.npmrc` at the repository root sets `include=dev`. npm reads this on every
+  install regardless of which install command runs or what `NODE_ENV` says.
+  This is the one that works even when `vercel.json` is being ignored.
+- `vercel.json` installs with `npm install --include=dev`
 - session cookies are marked `Secure` based on `VERCEL=1` (which Vercel sets
   itself) and fail safe to `Secure` unless the environment is explicitly
   `development` or `test`

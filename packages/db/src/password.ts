@@ -245,7 +245,7 @@ export function needsRehash(stored: string): boolean {
  * Avoids characters that are misread when dictated or written down (0/O,
  * 1/l/I), because these get read out over a phone to a branch.
  */
-export function generateTemporaryPassword(): string {
+function draw(): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   const bytes = randomBytes(16);
   let out = '';
@@ -257,4 +257,21 @@ export function generateTemporaryPassword(): string {
     out += alphabet[(bytes[i] ?? 0) % alphabet.length];
   }
   return out;
+}
+
+export function generateTemporaryPassword(): string {
+  // Random draws occasionally contain a run the policy refuses - "vwxy" and
+  // "3456" both turn up in practice. Issuing a credential this system would
+  // itself reject is incoherent, so draw again until one passes.
+  //
+  // Checked without an email address because the generator does not know whose
+  // account it is for; the account-specific rules are applied at the point the
+  // person chooses their own password.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = draw();
+    if (checkPasswordStrength(candidate).ok) return candidate;
+  }
+  // Unreachable in practice. Fail loudly rather than hand back a weak
+  // credential or loop forever.
+  throw new Error('Could not generate a temporary password meeting the policy');
 }

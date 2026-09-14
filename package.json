@@ -11,7 +11,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @retail-ops/domain -w @retail-ops/db -w @retail-ops/api -w @retail-ops/web",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
