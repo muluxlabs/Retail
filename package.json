@@ -1,0 +1,34 @@
+{
+  "name": "retail-ops",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.7",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "npm run migrate -w @retail-ops/db",
+    "dev:api": "npm run dev -w @retail-ops/api",
+    "dev:web": "npm run dev -w @retail-ops/web",
+    "lint": "tsc -b --noEmit",
+    "db:down": "docker compose down",
+    "db:seed": "npm run seed -w @retail-ops/db",
+    "db:status": "npm run status -w @retail-ops/db",
+    "db:reset": "npm run reset -w @retail-ops/db"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.0",
+    "tsx": "4.23.13",
+    "@types/node": "22.20.1"
+  }
+}

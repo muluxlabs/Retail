@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+
+/*
+ * Design intent: quiet, dense, legible.
+ *
+ * The people using this spend their day in it and the sponsor is an auditor.
+ * So: one accent colour used sparingly, a neutral ground that does not
+ * vibrate under fluorescent light, and numbers set in tabular figures so
+ * columns of quantities line up and a wrong digit is visible.
+ *
+ * Colour carries meaning here and is never decorative. Amber means an open
+ * work item. Red means stock has gone negative or value has been lost.
+ * Nothing else is allowed to use them.
+ */
+
+@theme {
+  --color-ink-50: oklch(0.985 0.002 265);
+  --color-ink-100: oklch(0.968 0.003 265);
+  --color-ink-200: oklch(0.925 0.005 265);
+  --color-ink-300: oklch(0.862 0.007 265);
+  --color-ink-400: oklch(0.68 0.011 265);
+  --color-ink-500: oklch(0.548 0.013 265);
+  --color-ink-600: oklch(0.44 0.014 265);
+  --color-ink-700: oklch(0.364 0.014 265);
+  --color-ink-800: oklch(0.26 0.013 265);
+  --color-ink-900: oklch(0.196 0.012 265);
+  --color-ink-950: oklch(0.135 0.011 265);
+
+  /* Deep teal. Distinct from the amber/red signal colours at a glance. */
+  --color-accent-50: oklch(0.97 0.02 195);
+  --color-accent-100: oklch(0.93 0.04 195);
+  --color-accent-300: oklch(0.8 0.09 195);
+  --color-accent-500: oklch(0.62 0.11 195);
+  --color-accent-600: oklch(0.53 0.1 195);
+  --color-accent-700: oklch(0.44 0.085 195);
+  --color-accent-900: oklch(0.3 0.06 195);
+
+  --font-sans: 'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink-100 text-ink-900 font-sans text-[13.5px] leading-relaxed antialiased;
+  }
+
+  /* Quantities and money must align vertically to be scannable. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  ::selection {
+    @apply bg-accent-300/40;
+  }
+
+  /* A focus ring that is visible without being loud. */
+  :focus-visible {
+    @apply outline-accent-500 outline-2 outline-offset-2;
+  }
+
+  /* Thin scrollbars, so dense tables do not lose width to chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-300) transparent;
+  }
+}

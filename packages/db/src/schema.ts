@@ -1,0 +1,257 @@
+/**
+ * Kysely type definitions for the core schema.
+ *
+ * Hand-written against `migrations/001_core.sql`, which is the source of truth
+ * (HANDOFF section 7). These types describe the schema; they never define it.
+ * If the two disagree, the SQL is right and this file is wrong.
+ *
+ * Kysely gives typed queries over that schema without an ORM. The schema leans
+ * on triggers, partial unique indexes and views that an ORM would fight.
+ */
+
+import type { ColumnType, Generated, Insertable, Selectable, Updateable } from 'kysely';
+
+/** Set by the database on insert, never written by us, not updatable. */
+type Timestamp = ColumnType<Date, Date | string | undefined, never>;
+/** Business time. We always supply it - that is the point of occurred_at. */
+type SuppliedTimestamp = ColumnType<Date, Date | string, Date | string>;
+
+export type BranchKind = 'store' | 'warehouse';
+
+export type MovementReason =
+  | 'grn'
+  | 'grn_reversal'
+  | 'sale'
+  | 'sale_refund'
+  | 'transfer_out'
+  | 'transfer_in'
+  | 'transfer_loss'
+  | 'count_adjustment'
+  | 'write_off'
+  | 'opening_balance';
+
+export type ExceptionKind =
+  | 'negative_stock_override'
+  | 'unlisted_barcode_scan'
+  | 'backdated_entry'
+  | 'count_variance'
+  | 'transit_loss'
+  | 'cash_variance'
+  | 'price_override'
+  | 'void_after_tender';
+
+export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
+
+export interface BranchTable {
+  id: Generated<string>;
+  code: string;
+  name: string;
+  kind: ColumnType<BranchKind, BranchKind | undefined, BranchKind>;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: Timestamp;
+}
+
+export interface TerminalTable {
+  id: Generated<string>;
+  branch_id: string;
+  code: string;
+  /** Sync cursor: the highest stock_movement.seq this terminal has pulled. */
+  last_synced_seq: ColumnType<number, number | undefined, number>;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+}
+
+export interface PersonTable {
+  id: Generated<string>;
+  full_name: string;
+  /**
+   * Nullable by design. Populating it engages the Cyber and Data Protection
+   * Act [Chapter 12:07]; it points at a separately permissioned vault table,
+   * never at a plain column. Do not make this NOT NULL without a signed
+   * lawful-basis assessment (HANDOFF section 3.2).
+   */
+  national_id_ref: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: Timestamp;
+}
+
+export interface RoleTable {
+  id: string;
+  name: string;
+}
+
+export interface PersonRoleTable {
+  /** Surrogate key: see migration 002. branch_id is nullable, so it cannot
+   *  take part in a composite primary key. */
+  id: Generated<string>;
+  person_id: string;
+  role_id: string;
+  /** NULL means the role is group-wide rather than scoped to one branch. */
+  branch_id: string | null;
+}
+
+export interface ProductCategoryTable {
+  id: Generated<string>;
+  parent_id: string | null;
+  name: string;
+}
+
+export interface ProductTable {
+  id: Generated<string>;
+  sku: string;
+  name: string;
+  category_id: string | null;
+  base_uom: string;
+  is_weighed: ColumnType<boolean, boolean | undefined, boolean>;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: Timestamp;
+  /** Set during master-data cleanse. Merged products keep history, reject movements. */
+  merged_into_id: string | null;
+}
+
+export interface ProductPackTable {
+  id: Generated<string>;
+  product_id: string;
+  label: string;
+  /** How many base units this pack contains. Case of 10 -> 10. */
+  qty_base: number;
+  is_default_sell: ColumnType<boolean, boolean | undefined, boolean>;
+  is_default_buy: ColumnType<boolean, boolean | undefined, boolean>;
+}
+
+export interface BarcodeTable {
+  /** PRIMARY KEY. One code, one pack, one product, one multiplier. */
+  code: string;
+  pack_id: string;
+  symbology: ColumnType<string, string | undefined, string>;
+  created_at: Timestamp;
+}
+
+/**
+ * The append-only ledger.
+ *
+ * UPDATE and DELETE raise in the database via `ledger_is_append_only()`. The
+ * Updateable type is therefore a lie the compiler should never let anyone
+ * tell: every column is `never` for update.
+ */
+export interface StockMovementTable {
+  seq: Generated<number>;
+  event_id: string;
+  product_id: string;
+  branch_id: string;
+  qty_base: number;
+  unit_cost: number | null;
+  currency: ColumnType<string, string | undefined, never>;
+  reason: MovementReason;
+  doc_type: string | null;
+  doc_id: string | null;
+  reverses_seq: number | null;
+  actor_id: string;
+  terminal_id: string | null;
+  occurred_at: ColumnType<Date, Date | string, never>;
+  recorded_at: Timestamp;
+}
+
+export interface ExceptionEventTable {
+  id: Generated<string>;
+  event_id: string;
+  kind: ExceptionKind;
+  state: ColumnType<ExceptionState, ExceptionState | undefined, ExceptionState>;
+  branch_id: string;
+  terminal_id: string | null;
+  actor_id: string;
+  product_id: string | null;
+  detail: ColumnType<Record<string, unknown>, string | undefined, string>;
+  value_impact: number | null;
+  currency: string | null;
+  occurred_at: SuppliedTimestamp;
+  recorded_at: Timestamp;
+  /** CHECK: a cleared row must carry both a person and a time. */
+  cleared_by: string | null;
+  cleared_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  clearing_note: string | null;
+}
+
+export interface AuditLogTable {
+  seq: Generated<number>;
+  event_id: string;
+  action_code: string;
+  actor_id: string | null;
+  terminal_id: string | null;
+  branch_id: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  state_before: ColumnType<Record<string, unknown> | null, string | null, never>;
+  state_after: ColumnType<Record<string, unknown> | null, string | null, never>;
+  occurred_at: ColumnType<Date, Date | string, never>;
+  recorded_at: Timestamp;
+}
+
+/** VIEW. Stock is SUM(qty_base) and is never stored (AD-1). */
+export interface StockOnHandView {
+  product_id: string;
+  branch_id: string;
+  qty_base: number;
+}
+
+/** VIEW. Weighted-average cost, derived from receipt movements only. */
+export interface ProductWacView {
+  product_id: string;
+  branch_id: string;
+  wac: number | null;
+}
+
+/** VIEW. Movements whose recorded_at outruns occurred_at by over 48 hours. */
+export interface BackdatedMovementView {
+  seq: number;
+  event_id: string;
+  branch_id: string;
+  product_id: string;
+  actor_id: string;
+  occurred_at: Date;
+  recorded_at: Date;
+  backdate_gap: string;
+}
+
+/** Applied-migration log. Owned by the runner, not by 001_core.sql. */
+export interface SchemaMigrationTable {
+  filename: string;
+  checksum: string;
+  applied_at: Timestamp;
+}
+
+export interface Database {
+  branch: BranchTable;
+  terminal: TerminalTable;
+  person: PersonTable;
+  role: RoleTable;
+  person_role: PersonRoleTable;
+  product_category: ProductCategoryTable;
+  product: ProductTable;
+  product_pack: ProductPackTable;
+  barcode: BarcodeTable;
+  stock_movement: StockMovementTable;
+  exception_event: ExceptionEventTable;
+  audit_log: AuditLogTable;
+  schema_migration: SchemaMigrationTable;
+  stock_on_hand: StockOnHandView;
+  product_wac: ProductWacView;
+  backdated_movement: BackdatedMovementView;
+}
+
+export type Branch = Selectable<BranchTable>;
+export type NewBranch = Insertable<BranchTable>;
+export type Person = Selectable<PersonTable>;
+export type NewPerson = Insertable<PersonTable>;
+export type Product = Selectable<ProductTable>;
+export type NewProduct = Insertable<ProductTable>;
+export type ProductUpdate = Updateable<ProductTable>;
+export type ProductPack = Selectable<ProductPackTable>;
+export type NewProductPack = Insertable<ProductPackTable>;
+export type Barcode = Selectable<BarcodeTable>;
+export type NewBarcode = Insertable<BarcodeTable>;
+export type StockMovement = Selectable<StockMovementTable>;
+export type NewStockMovement = Insertable<StockMovementTable>;
+export type ExceptionEvent = Selectable<ExceptionEventTable>;
+export type NewExceptionEvent = Insertable<ExceptionEventTable>;
