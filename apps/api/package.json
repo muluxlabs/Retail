@@ -18,5 +18,19 @@
     "zod": "4.5.0",
     "@fastify/cookie": "11.0.2",
     "fastify-plugin": "5.1.0"
-  }
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
 }

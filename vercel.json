@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build --workspace @retail-ops/domain --workspace @retail-ops/db && npm run build --workspace @retail-ops/web",
+  "installCommand": "npm install --include=dev",
+  "buildCommand": "npm run build --workspace @retail-ops/domain --workspace @retail-ops/db --workspace @retail-ops/api && npm run build --workspace @retail-ops/web",
   "outputDirectory": "apps/web/dist",
-  "installCommand": "npm install",
   "functions": {
     "api/index.ts": {
       "runtime": "@vercel/node@5.3.31",

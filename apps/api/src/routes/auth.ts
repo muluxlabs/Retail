@@ -42,8 +42,25 @@ function cookieOptions(expires: Date, secure: boolean) {
   };
 }
 
+/**
+ * Should the session cookie be marked Secure?
+ *
+ * Deliberately not keyed on NODE_ENV alone. Setting NODE_ENV=production in a
+ * Vercel project also applies it to `npm install`, which then skips
+ * devDependencies and breaks the build - so that variable should not be set
+ * there, and the cookie must not depend on it.
+ *
+ * Fails safe: Secure unless the host is explicitly a local development one.
+ * Getting this wrong in the unsafe direction sends session cookies in clear.
+ */
+function useSecureCookies(): boolean {
+  if (process.env['VERCEL'] === '1') return true;
+  if (process.env['NODE_ENV'] === 'production') return true;
+  return process.env['NODE_ENV'] !== 'development' && process.env['NODE_ENV'] !== 'test';
+}
+
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
-  const secure = process.env['NODE_ENV'] === 'production';
+  const secure = useSecureCookies();
 
   app.post('/auth/login', async (request, reply) => {
     const body = parseBody(loginBody, request.body);

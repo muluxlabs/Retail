@@ -13,7 +13,11 @@
 import { connect, loadEnv } from '@retail-ops/db';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { buildServer } from '../apps/api/src/server.js';
+// Imported as a package entry point, not a relative path into src/. The
+// bundler resolves this to built JavaScript; reaching into ../apps/api/src
+// only worked because TypeScript rewrites .js to .ts at compile time, which
+// nothing does at runtime.
+import { buildServer } from '@retail-ops/api/server';
 
 loadEnv();
 

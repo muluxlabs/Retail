@@ -22,6 +22,35 @@ You do **not** need Docker for production. Docker is only the local database.
 
 ## 2. Create the database
 
+### Option A — through Vercel (recommended, and what we are doing)
+
+In the Vercel project: **Storage → Create Database → Neon**, or
+**Marketplace → Neon → Install**.
+
+Vercel provisions the database and injects the connection variables into the
+project automatically. It sets several; the two that matter here are:
+
+| Variable it sets | What it is | Use it for |
+|---|---|---|
+| `DATABASE_URL` | pooled | the running API — already the right name, nothing to do |
+| `DATABASE_URL_UNPOOLED` | direct | migrations and seeding |
+
+Check the names under **Settings → Environment Variables** after installing,
+because the integration has changed them before. If `DATABASE_URL` is *not*
+the pooled one, set it manually to the pooled value — the API needs pooled.
+
+To run migrations you need the direct string on your own machine. Either copy
+`DATABASE_URL_UNPOOLED` out of the Vercel dashboard, or pull it down:
+
+```bash
+npx vercel link       # once, connects this folder to the Vercel project
+npx vercel env pull .env.vercel
+```
+
+`.env.vercel` matches `.env.*` in `.gitignore`, so it will not be committed.
+
+### Option B — directly at neon.tech
+
 1. Create a Neon project. **Pick the region closest to Zimbabwe** — at time of
    writing that is `aws-eu-central-1` (Frankfurt) or `aws-ap-south-1` (Mumbai);
    check whether `af-south-1` (Cape Town) is offered, because it is by far the
@@ -30,7 +59,11 @@ You do **not** need Docker for production. Docker is only the local database.
    - the **pooled** one, containing `-pooler` in the host
    - the **direct** one, without `-pooler`
 
-You need both, and they are used for different things:
+Then add `DATABASE_URL` (pooled) to Vercel yourself.
+
+### Either way, you need both strings
+
+They are not interchangeable:
 
 | String | Used by | Why |
 |---|---|---|
@@ -83,18 +116,37 @@ wraps Fastify) and `vercel.json` (routing and build configuration).
 
 1. In Vercel, **Add New → Project**, import `muluxlabs/Retail`.
 2. Leave the framework preset as detected; `vercel.json` overrides what matters.
-3. Add these environment variables, all for **Production** and **Preview**:
+3. Add these environment variables, for **Production** and **Preview**:
 
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | the **pooled** Neon string |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
-| `NODE_ENV` | `production` |
 
 4. Deploy.
 
-`NODE_ENV=production` matters more than it looks: it is what makes the session
-cookie `Secure`. Without it the cookie is sent over plain HTTP.
+### Do NOT set `NODE_ENV=production` on Vercel
+
+It looks harmless and it breaks the build. Vercel applies project environment
+variables to `npm install` as well as to the running function, and npm with
+`NODE_ENV=production` skips `devDependencies` — which is where `typescript`
+and `vite` live. The build then fails with:
+
+```
+sh: line 1: tsc: command not found
+Error: Command "npm run build" exited with 127
+```
+
+Two defences are in place, and neither needs you to set the variable:
+
+- `vercel.json` installs with `npm install --include=dev`, so the toolchain is
+  present even if something sets `NODE_ENV`
+- session cookies are marked `Secure` based on `VERCEL=1` (which Vercel sets
+  itself) and fail safe to `Secure` unless the environment is explicitly
+  `development` or `test`
+
+Vercel already sets `NODE_ENV=production` inside the Node runtime at execution
+time. You do not need to, and should not.
 
 Because the web app and the API are served from the same Vercel domain, the
 session cookie is first-party and `VITE_API_URL` is not needed. If you later
