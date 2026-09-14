@@ -51,7 +51,7 @@ const stateBody = z.object({
 });
 
 export async function registerExceptionRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/exceptions', async (request) => {
+  app.get('/exceptions', { onRequest: [app.requirePermission('exception.read')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
 
     let query = app.db
@@ -109,7 +109,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     return { items, byState, byKind, limit: q.limit, offset: q.offset };
   });
 
-  app.get('/exceptions/:id', async (request, reply) => {
+  app.get('/exceptions/:id', { onRequest: [app.requirePermission('exception.read')] }, async (request, reply) => {
     const { id } = parseParams(idParams, request.params);
     const row = await app.db
       .selectFrom('exception_event')
@@ -139,7 +139,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
    * refused rather than silently re-cleared, so the audit trail keeps one
    * clearing event per exception.
    */
-  app.post('/exceptions/:id/clear', async (request, reply) => {
+  app.post('/exceptions/:id/clear', { onRequest: [app.requirePermission('exception.clear')] }, async (request, reply) => {
     const { id } = parseParams(idParams, request.params);
     const body = parseBody(clearBody, request.body);
 
@@ -212,7 +212,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
   });
 
   /** Acknowledge or escalate without closing. */
-  app.post('/exceptions/:id/state', async (request, reply) => {
+  app.post('/exceptions/:id/state', { onRequest: [app.requirePermission('exception.clear')] }, async (request, reply) => {
     const { id } = parseParams(idParams, request.params);
     const body = parseBody(stateBody, request.body);
 

@@ -31,7 +31,7 @@ const movementQuery = z.object({
 
 export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   /** Stock on hand, valued at weighted-average cost. */
-  app.get('/stock', async (request) => {
+  app.get('/stock', { onRequest: [app.requirePermission('stock.read')] }, async (request) => {
     const q = parseQuery(stockQuery, request.query);
 
     let query = app.db
@@ -78,7 +78,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Stock totals per branch, for the branch picker and the dashboard. */
-  app.get('/stock/by-branch', async () => {
+  app.get('/stock/by-branch', { onRequest: [app.requirePermission('stock.read')] }, async () => {
     const rows = await app.db
       .selectFrom('branch')
       .leftJoin('stock_on_hand', 'stock_on_hand.branch_id', 'branch.id')
@@ -108,7 +108,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** The raw ledger. This is the audit trail, and it is the storage format. */
-  app.get('/movements', async (request) => {
+  app.get('/movements', { onRequest: [app.requirePermission('stock.read')] }, async (request) => {
     const q = parseQuery(movementQuery, request.query);
 
     let query = app.db
@@ -149,7 +149,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Movements recorded well after they happened. The backdating report. */
-  app.get('/movements/backdated', async () =>
+  app.get('/movements/backdated', { onRequest: [app.requirePermission('stock.read')] }, async () =>
     app.db
       .selectFrom('backdated_movement')
       .innerJoin('product', 'product.id', 'backdated_movement.product_id')

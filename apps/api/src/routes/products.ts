@@ -43,7 +43,7 @@ const createProduct = z.object({
 
 export async function registerProductRoutes(app: FastifyInstance): Promise<void> {
   /** List the item master, newest first, with pack and barcode counts. */
-  app.get('/products', async (request) => {
+  app.get('/products', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
 
     let query = app.db
@@ -118,7 +118,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
   });
 
   /** One product with packs, barcodes, and its stock position per branch. */
-  app.get('/products/:id', async (request, reply) => {
+  app.get('/products/:id', { onRequest: [app.requirePermission('product.read')] }, async (request, reply) => {
     const { id } = parseParams(idParams, request.params);
 
     const product = await app.db
@@ -209,7 +209,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
    * bought or sold, and a product whose case is a separate record is the
    * defect this whole model exists to prevent.
    */
-  app.post('/products', async (request, reply) => {
+  app.post('/products', { onRequest: [app.requirePermission('product.write')] }, async (request, reply) => {
     const body = parseBody(createProduct, request.body);
 
     const created = await app.db.transaction().execute(async (tx) => {
@@ -256,7 +256,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
   });
 
   /** Categories, for the filter control. */
-  app.get('/categories', async () =>
+  app.get('/categories', { onRequest: [app.requirePermission('product.read')] }, async () =>
     app.db
       .selectFrom('product_category')
       .select(['id', 'name', 'parent_id as parentId'])

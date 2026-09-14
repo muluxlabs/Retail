@@ -214,6 +214,51 @@ export interface BackdatedMovementView {
   backdate_gap: string;
 }
 
+/** Sign-in credentials, one row per person. See migration 003. */
+export interface UserCredentialTable {
+  person_id: string;
+  email: string;
+  password_hash: string;
+  password_algo: ColumnType<string, string | undefined, string>;
+  must_change_password: ColumnType<boolean, boolean | undefined, boolean>;
+  failed_attempts: ColumnType<number, number | undefined, number>;
+  locked_until: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  last_login_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  created_at: Timestamp;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/**
+ * Live and historic sessions.
+ *
+ * `token_hash` is the SHA-256 of the cookie value; the value itself is never
+ * stored. Sessions are revoked rather than deleted, so who was signed in when
+ * something happened stays answerable (HANDOFF section 10).
+ */
+export interface UserSessionTable {
+  id: Generated<string>;
+  token_hash: string;
+  person_id: string;
+  issued_at: Timestamp;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
+  last_seen_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  revoked_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  revoked_reason: string | null;
+  ip: string | null;
+  user_agent: string | null;
+}
+
+export interface PermissionTable {
+  id: string;
+  description: string;
+}
+
+/** Named capabilities granted to a role, not a rank ordering. */
+export interface RolePermissionTable {
+  role_id: string;
+  permission_id: string;
+}
+
 /** Applied-migration log. Owned by the runner, not by 001_core.sql. */
 export interface SchemaMigrationTable {
   filename: string;
@@ -234,6 +279,10 @@ export interface Database {
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;
   audit_log: AuditLogTable;
+  user_credential: UserCredentialTable;
+  user_session: UserSessionTable;
+  permission: PermissionTable;
+  role_permission: RolePermissionTable;
   schema_migration: SchemaMigrationTable;
   stock_on_hand: StockOnHandView;
   product_wac: ProductWacView;

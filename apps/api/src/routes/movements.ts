@@ -63,7 +63,7 @@ const countBody = z.object({
 
 export async function registerMovementRoutes(app: FastifyInstance): Promise<void> {
   /** Post one movement. Idempotent on eventId. */
-  app.post('/movements', async (request, reply) => {
+  app.post('/movements', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
     const body = parseBody(movementBody, request.body);
     const result = await postMovement(app.db, body);
     // A replay is a success, but it is not a creation.
@@ -71,8 +71,24 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
   });
 
   /** A till sale, by barcode, in packs. */
-  app.post('/sales', async (request, reply) => {
+  app.post('/sales', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
     const body = parseBody(sellBody, request.body);
+
+    // Overriding the negative-stock guard is a separate capability from making
+    // a sale. Their stated problem is cashiers overriding "to their own
+    // benefit"; a cashier holding movement.post must not be able to do it
+    // alone, so the override is refused unless the caller also holds
+    // stock.override.
+    if (body.overrideNegative && request.user?.permissions.has('stock.override') !== true) {
+      return reply.status(403).send({
+        error: {
+          code: 'NOT_PERMITTED',
+          message: 'Overriding negative stock requires manager authorisation.',
+          detail: { permission: 'stock.override' },
+        },
+      });
+    }
+
     const result = await sell(app.db, body);
     return reply.status(result.replayed ? 200 : 201).send(result);
   });
@@ -83,7 +99,7 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    * Posting is the point: an unposted count changes nothing, which is how
    * four counts sat "In progress" while the variance never cleared.
    */
-  app.post('/counts', async (request, reply) => {
+  app.post('/counts', { onRequest: [app.requirePermission('stock.adjust')] }, async (request, reply) => {
     const body = parseBody(countBody, request.body);
     const result = await postCount(app.db, body);
     const varianceLines = result.lines.filter((l) => l.variance !== 0);
@@ -107,7 +123,7 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    * An unresolved code returns 404 via `UnlistedBarcode`; the till is expected
    * to follow that with an exception, which is what makes the scan evidence.
    */
-  app.get('/barcodes/:code', async (request) => {
+  app.get('/barcodes/:code', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
     const { code } = z.object({ code: z.string().trim().min(1).max(32) }).parse(request.params);
     return resolveBarcode(app.db, code);
   });
