@@ -30,6 +30,24 @@ export class NegativeStockBlocked extends DomainError {
 }
 
 /**
+ * Moving more cash out of a custody point than it holds.
+ *
+ * The same shape as NegativeStockBlocked - a resource going negative without
+ * authorisation - but named for what it actually is, so a client debugging a
+ * blocked float issue is not reading "NEGATIVE_STOCK_BLOCKED" for a cash
+ * shortfall.
+ */
+export class InsufficientCash extends DomainError {
+  constructor(available: number, requested: number) {
+    super(
+      'INSUFFICIENT_CASH',
+      `Insufficient cash: ${available} available, ${requested} requested`,
+      { available, requested },
+    );
+  }
+}
+
+/**
  * A barcode that resolves to nothing in the master.
  *
  * The old platform let these pass silently, which is how "under the counter"

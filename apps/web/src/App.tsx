@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from './lib/auth.js';
 import { Spinner } from './lib/ui.js';
+import { Cash } from './pages/Cash.js';
 import { Count } from './pages/Count.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Exceptions } from './pages/Exceptions.js';
@@ -29,12 +30,20 @@ const NAV = [
   { to: '/receive', label: 'Receive', permission: 'movement.post' },
   { to: '/count', label: 'Count', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
+  // A cashier holds only cash.count, finance/auditor only cash.read - no
+  // single permission covers everyone who should see this tab, so it takes
+  // any-of. The page itself still decides what each of them can actually do.
+  { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move'] },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
   { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
 ];
+
+function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
+  return Array.isArray(permission) ? permission.some(can) : can(permission);
+}
 
 export function App() {
   const { user, loading, can } = useAuth();
@@ -53,7 +62,7 @@ export function App() {
   // too; this is the matching wall in the UI rather than a suggestion.
   if (user.mustChangePassword) return <ChangePassword />;
 
-  const visible = NAV.filter((item) => can(item.permission));
+  const visible = NAV.filter((item) => canAny(can, item.permission));
   // Land people on the first screen they are actually allowed to see.
   const home = visible[0]?.to ?? '/products';
 
@@ -105,6 +114,14 @@ export function App() {
           <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
+          <Route
+            path="/cash"
+            element={
+              <Guard permission={['cash.read', 'cash.count', 'cash.move']} home={home}>
+                <Cash />
+              </Guard>
+            }
+          />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
@@ -122,12 +139,12 @@ function Guard({
   home,
   children,
 }: {
-  permission: string;
+  permission: string | string[];
   home: string;
   children: React.ReactNode;
 }) {
   const { can } = useAuth();
-  if (!can(permission)) return <Navigate to={home} replace />;
+  if (!canAny(can, permission)) return <Navigate to={home} replace />;
   return <>{children}</>;
 }
 

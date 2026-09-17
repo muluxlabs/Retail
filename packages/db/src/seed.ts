@@ -219,6 +219,8 @@ export interface SeedResult {
   barcodes: number;
   movements: number;
   exceptions: number;
+  cashPoints: number;
+  cashMovements: number;
 }
 
 export async function isSeeded(db: Kysely<Database>): Promise<boolean> {
@@ -261,15 +263,18 @@ export async function seed(
     }
     log(`  + ${BRANCHES.length} branches`);
 
+    const terminalIds: { branchCode: string; branchId: string; terminalId: string }[] = [];
     for (const b of BRANCHES) {
       const branchId = branchIds.get(b.code);
       if (branchId === undefined || b.kind === 'warehouse') continue;
       const tills = b.code === 'KANA' ? 3 : 2;
       for (let i = 1; i <= tills; i += 1) {
-        await tx
+        const row = await tx
           .insertInto('terminal')
           .values({ branch_id: branchId, code: `${b.code}-TILL-${i}` })
-          .execute();
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        terminalIds.push({ branchCode: b.code, branchId, terminalId: row.id });
       }
     }
 
@@ -461,6 +466,52 @@ export async function seed(
     }
     log(`  + ${movements.length} stock movements`);
 
+    // -- cash custody ----------------------------------------------------------
+    // One till per terminal, one safe and one petty box per trading branch
+    // (not the warehouse - it does not run a till). Each opens with a
+    // believable starting float so the position screen has real numbers on
+    // it from the first login, the same reasoning as the stock seed.
+    let cashPointCount = 0;
+    let cashMovementCount = 0;
+
+    async function openPoint(
+      branchId: string,
+      kind: 'till' | 'safe' | 'petty' | 'bank',
+      name: string,
+      terminalId: string | null,
+      openingAmount: number,
+    ): Promise<void> {
+      const point = await tx
+        .insertInto('cash_point')
+        .values({ branch_id: branchId, kind, terminal_id: terminalId, name })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await tx
+        .insertInto('cash_movement')
+        .values({
+          event_id: uid(),
+          cash_point_id: point.id,
+          amount: openingAmount,
+          reason: 'opening_balance',
+          actor_id: auditor,
+          occurred_at: new Date(now - 45 * DAY),
+        })
+        .execute();
+      cashPointCount += 1;
+      cashMovementCount += 1;
+    }
+
+    for (const t of terminalIds) {
+      await openPoint(t.branchId, 'till', `${t.branchCode} till`, t.terminalId, 50 + rng() * 30);
+    }
+    for (const b of tradingBranches) {
+      const branchId = branchIds.get(b.code);
+      if (branchId === undefined) continue;
+      await openPoint(branchId, 'safe', `${b.code} safe`, null, 400 + rng() * 300);
+      await openPoint(branchId, 'petty', `${b.code} petty cash`, null, 40 + rng() * 40);
+    }
+    log(`  + ${cashPointCount} cash points, ${cashMovementCount} opening balances`);
+
     // -- the exception queue -------------------------------------------------
     // Real work items, not log lines. Each needs a named human to clear it.
     const kana = branchIds.get('KANA') ?? '';
@@ -533,6 +584,8 @@ export async function seed(
       barcodes: barcodeCount,
       movements: movements.length,
       exceptions: exceptions.length,
+      cashPoints: cashPointCount,
+      cashMovements: cashMovementCount,
     };
   });
 }

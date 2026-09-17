@@ -241,6 +241,31 @@ export interface CurrentUser {
   mustChangePassword: boolean;
 }
 
+export type CashPointKind = 'till' | 'safe' | 'petty' | 'bank';
+
+export interface CashPointRef {
+  id: string;
+  branchId: string;
+  branchCode: string;
+  kind: CashPointKind;
+  name: string;
+  terminalId: string | null;
+}
+
+export interface CashPointPosition extends CashPointRef {
+  amount: number;
+}
+
+export interface CashLedgerRow {
+  seq: number;
+  amount: number;
+  reason: string;
+  docType: string | null;
+  occurredAt: string;
+  cashPointName: string;
+  actorName: string | null;
+}
+
 export type TransferState = 'dispatched' | 'received' | 'cancelled';
 
 export interface TransferSummary {
@@ -481,6 +506,34 @@ export const api = {
   transfer: (id: string) => request<TransferDetail>(`/api/transfers/${id}`),
 
   /** Dispatch stock to another branch. Blocked the same way overselling is. */
+  // -- cash custody --------------------------------------------------------
+  cashPositions: (params: { branchId?: string } = {}) =>
+    request<{ items: CashPointPosition[] }>(`/api/cash${qs(params)}`),
+
+  /** Names only, no balance - for a blind count's "which point" picker. */
+  cashPoints: (params: { branchId?: string } = {}) =>
+    request<{ items: CashPointRef[] }>(`/api/cash/points${qs(params)}`),
+
+  cashLedger: (params: { cashPointId?: string; limit?: number } = {}) =>
+    request<{ items: CashLedgerRow[] }>(`/api/cash/ledger${qs(params)}`),
+
+  openCashPoint: (body: { cashPointId: string; amount: number }) =>
+    request<{ seq: number }>('/api/cash/open', { method: 'POST', body: JSON.stringify(body) }),
+
+  moveCash: (body: {
+    fromCashPointId: string;
+    toCashPointId: string;
+    amount: number;
+    reason: 'float_issue' | 'float_return' | 'bank_deposit';
+  }) => request<{ outSeq: number; inSeq: number }>('/api/cash/move', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** The blind count. Only ever send what was physically counted. */
+  postCashCount: (body: { cashPointId: string; countedAmount: number }) =>
+    request<{ cashPointId: string; expected: number; counted: number; variance: number }>(
+      '/api/cash/count',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
   dispatchTransfer: (body: {
     originBranchId: string;
     destinationBranchId: string;

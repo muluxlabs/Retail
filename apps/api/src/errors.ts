@@ -24,6 +24,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   // The stock guard fired. Not the caller's fault, not a validation error:
   // it is a conflict with the current state of the ledger.
   NEGATIVE_STOCK_BLOCKED: 409,
+  // The cash equivalent - moving more out of a custody point than it holds.
+  INSUFFICIENT_CASH: 409,
   // Scanned something not in the master. Genuinely absent.
   UNLISTED_BARCODE: 404,
   // Someone tried to mutate history. The method is not allowed, ever.

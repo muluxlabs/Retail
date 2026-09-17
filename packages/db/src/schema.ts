@@ -294,6 +294,53 @@ export interface TransferLineTable {
   receipt_movement_seq: number | null;
 }
 
+export type CashPointKind = 'till' | 'safe' | 'petty' | 'bank';
+
+export type CashReason =
+  | 'opening_balance'
+  | 'float_issue'
+  | 'float_return'
+  | 'bank_deposit'
+  | 'cash_variance'
+  | 'petty_disbursement'
+  | 'write_off';
+
+/** One row per place cash can sit. See migration 005. */
+export interface CashPointTable {
+  id: Generated<string>;
+  branch_id: string;
+  kind: CashPointKind;
+  terminal_id: string | null;
+  name: string;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+}
+
+/**
+ * Append-only cash ledger - the same discipline as stock_movement, applied
+ * to cash. Cash on hand is SUM(amount), never a stored balance.
+ */
+export interface CashMovementTable {
+  seq: Generated<number>;
+  event_id: string;
+  cash_point_id: string;
+  amount: number;
+  currency: ColumnType<string, string | undefined, string>;
+  reason: CashReason;
+  doc_type: string | null;
+  doc_id: string | null;
+  counterpart_seq: number | null;
+  actor_id: string;
+  terminal_id: string | null;
+  occurred_at: ColumnType<Date, Date | string, never>;
+  recorded_at: Timestamp;
+}
+
+/** VIEW. Cash on hand at one custody point. */
+export interface CashOnHandView {
+  cash_point_id: string;
+  amount: number;
+}
+
 /** Applied-migration log. Owned by the runner, not by 001_core.sql. */
 export interface SchemaMigrationTable {
   filename: string;
@@ -320,6 +367,9 @@ export interface Database {
   role_permission: RolePermissionTable;
   transfer: TransferTable;
   transfer_line: TransferLineTable;
+  cash_point: CashPointTable;
+  cash_movement: CashMovementTable;
+  cash_on_hand: CashOnHandView;
   schema_migration: SchemaMigrationTable;
   stock_on_hand: StockOnHandView;
   product_wac: ProductWacView;

@@ -19,6 +19,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerExceptionRoutes } from './routes/exceptions.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerMovementRoutes } from './routes/movements.js';
+import { registerCashRoutes } from './routes/cash.js';
 import { registerTransferRoutes } from './routes/transfers.js';
 import { registerProductRoutes } from './routes/products.js';
 import { registerReferenceRoutes } from './routes/reference.js';
@@ -74,6 +75,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       await api.register(registerExceptionRoutes);
       await api.register(registerMovementRoutes);
       await api.register(registerTransferRoutes);
+      await api.register(registerCashRoutes);
       await api.register(registerDashboardRoutes);
     },
     { prefix: '/api' },
