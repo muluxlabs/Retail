@@ -132,7 +132,7 @@ export function checkPasswordStrength(password: string, email?: string): Passwor
   const normalised = normalise(password);
   const stem = core(normalised);
 
-  // Built around a banned word: "retail@1234", "password12", "Welcome2026".
+  // Built around a banned word: "example@1234", "password12", "Welcome2026".
   for (const token of BANNED_TOKENS) {
     if (stem === token || normalised === token) {
       return {
