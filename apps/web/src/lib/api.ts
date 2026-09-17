@@ -514,6 +514,14 @@ export const api = {
   cashPoints: (params: { branchId?: string } = {}) =>
     request<{ items: CashPointRef[] }>(`/api/cash/points${qs(params)}`),
 
+  createCashPoint: (body: {
+    branchId: string;
+    kind: CashPointKind;
+    name: string;
+    terminalId?: string | null;
+    openingAmount?: number;
+  }) => request<CashPointPosition>('/api/cash/points', { method: 'POST', body: JSON.stringify(body) }),
+
   cashLedger: (params: { cashPointId?: string; limit?: number } = {}) =>
     request<{ items: CashLedgerRow[] }>(`/api/cash/ledger${qs(params)}`),
 

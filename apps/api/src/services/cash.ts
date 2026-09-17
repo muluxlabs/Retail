@@ -33,6 +33,66 @@ export interface CashPointPosition {
   amount: number;
 }
 
+/**
+ * Create a custody point and open it with a starting balance in one step.
+ *
+ * The only way any cash_point exists in a real deployment: the seed script
+ * creates them by direct insert for local development, but nothing else
+ * does in production - a fresh Neon database has cash's tables and no rows
+ * in them until this is called.
+ */
+export async function createCashPoint(
+  db: Db,
+  input: {
+    branchId: string;
+    kind: CashPointKind;
+    name: string;
+    terminalId?: string | null | undefined;
+    openingAmount: number;
+    actorId: string;
+  },
+): Promise<CashPointPosition> {
+  return db.transaction().execute(async (tx) => {
+    const point = await tx
+      .insertInto('cash_point')
+      .values({
+        branch_id: input.branchId,
+        kind: input.kind,
+        name: input.name,
+        terminal_id: input.kind === 'till' ? (input.terminalId ?? null) : null,
+      })
+      .returning(['id', 'branch_id', 'kind', 'name', 'terminal_id'])
+      .executeTakeFirstOrThrow();
+
+    let amount = 0;
+    if (input.openingAmount !== 0) {
+      await post(tx, {
+        cashPointId: point.id,
+        amount: input.openingAmount,
+        reason: 'opening_balance',
+        actorId: input.actorId,
+      });
+      amount = input.openingAmount;
+    }
+
+    const branch = await tx
+      .selectFrom('branch')
+      .select('code')
+      .where('id', '=', point.branch_id)
+      .executeTakeFirstOrThrow();
+
+    return {
+      id: point.id,
+      branchId: point.branch_id,
+      branchCode: branch.code,
+      kind: point.kind,
+      name: point.name,
+      terminalId: point.terminal_id,
+      amount,
+    };
+  });
+}
+
 export async function listCashPoints(
   db: Db,
   filter: { branchId?: string | undefined } = {},

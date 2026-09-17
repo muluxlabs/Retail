@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 
-import { api, ApiError, type CashPointPosition, type CashPointRef } from '../lib/api.js';
+import { api, ApiError, type Branch, type CashPointKind, type CashPointPosition, type CashPointRef } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, Spinner, timeAgo, useAsync } from '../lib/ui.js';
 
@@ -21,6 +21,7 @@ export function Cash() {
   const [branchId, setBranchId] = useState('');
   const [moving, setMoving] = useState(false);
   const [counting, setCounting] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const branches = useAsync(() => api.branches(), []);
   const positions = useAsync(
@@ -53,8 +54,20 @@ export function Cash() {
           {can('cash.move') && (
             <Button onClick={() => setMoving((v) => !v)}>{moving ? 'Close' : 'Move cash'}</Button>
           )}
+          {can('cash.move') && (
+            <Button onClick={() => setCreating((v) => !v)}>{creating ? 'Close' : 'Add custody point'}</Button>
+          )}
         </div>
       </div>
+
+      {creating && (
+        <CreatePointForm
+          onDone={() => {
+            setCreating(false);
+            positions.reload();
+          }}
+        />
+      )}
 
       {counting && (
         <CountForm
@@ -370,6 +383,115 @@ function MoveForm({ onDone }: { onDone: () => void }) {
         <Button type="submit" variant="primary" disabled={busy}>
           {busy ? <Spinner /> : null}
           Move cash
+        </Button>
+      </form>
+    </Card>
+  );
+}
+
+function CreatePointForm({ onDone }: { onDone: () => void }) {
+  const [branchId, setBranchId] = useState('');
+  const [kind, setKind] = useState<CashPointKind>('safe');
+  const [name, setName] = useState('');
+  const [openingAmount, setOpeningAmount] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const branches = useAsync(() => api.branches(), []);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createCashPoint({
+        branchId,
+        kind,
+        name,
+        openingAmount: openingAmount === '' ? 0 : Number(openingAmount),
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="px-4 py-4">
+      <form onSubmit={submit} className="space-y-3">
+        <p className="text-ink-500 text-[12px]">
+          Safe, petty cash and bank are one per branch. A till is created from terminal setup, not
+          here.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="block">
+            <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+              Branch
+            </span>
+            <select
+              required
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+            >
+              <option value="">Select…</option>
+              {(branches.data ?? []).map((b: Branch) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+              Kind
+            </span>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as CashPointKind)}
+              className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+            >
+              <option value="safe">Safe</option>
+              <option value="petty">Petty cash</option>
+              <option value="bank">Bank</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+              Name
+            </span>
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Main safe"
+              className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+              Opening balance
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={openingAmount}
+              onChange={(e) => setOpeningAmount(e.target.value)}
+              placeholder="0.00"
+              className="tnum border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+            />
+          </label>
+        </div>
+        {error !== null && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">
+            {error}
+          </div>
+        )}
+        <Button type="submit" variant="primary" disabled={busy}>
+          {busy ? <Spinner /> : null}
+          Create custody point
         </Button>
       </form>
     </Card>

@@ -8,7 +8,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { cashLedger, listCashPoints, moveCash, openCashPoint, postCashCount } from '../services/cash.js';
+import {
+  cashLedger,
+  createCashPoint,
+  listCashPoints,
+  moveCash,
+  openCashPoint,
+  postCashCount,
+} from '../services/cash.js';
 import { parseBody, parseQuery } from '../validation.js';
 
 const listQuery = z.object({ branchId: z.uuid().optional() });
@@ -16,6 +23,14 @@ const listQuery = z.object({ branchId: z.uuid().optional() });
 const ledgerQuery = z.object({
   cashPointId: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+const createBody = z.object({
+  branchId: z.uuid(),
+  kind: z.enum(['till', 'safe', 'petty', 'bank']),
+  name: z.string().trim().min(1).max(64),
+  terminalId: z.uuid().nullable().optional(),
+  openingAmount: z.number().nonnegative().default(0),
 });
 
 const openBody = z.object({ cashPointId: z.uuid(), amount: z.number().positive() });
@@ -60,6 +75,21 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
   app.get('/cash/ledger', { onRequest: [app.requirePermission('cash.read')] }, async (request) => {
     const q = parseQuery(ledgerQuery, request.query);
     return { items: await cashLedger(app.db, q) };
+  });
+
+  /**
+   * Create a custody point. The only way any exist in a real deployment -
+   * the seed script inserts them directly for local development, but
+   * nothing else does in production.
+   */
+  app.post('/cash/points', { onRequest: [app.requirePermission('cash.move')] }, async (request, reply) => {
+    const body = parseBody(createBody, request.body);
+    const actor = request.user;
+    if (actor === null) {
+      return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
+    }
+    const created = await createCashPoint(app.db, { ...body, actorId: actor.personId });
+    return reply.status(201).send(created);
   });
 
   /** Seed a custody point's opening balance. Refuses to run twice. */
