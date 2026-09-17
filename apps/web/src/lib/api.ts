@@ -43,7 +43,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // The session is an httpOnly cookie; without this it is never sent.
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      // Only when there is a body. Fastify's JSON parser rejects
+      // Content-Type: application/json on an EMPTY body with its own 400
+      // (FST_ERR_CTP_EMPTY_JSON_BODY) before the route ever runs - sending
+      // this header unconditionally broke every bodiless call: sign-out,
+      // password reset, barcode removal. Found by testing the new endpoints
+      // directly against a running server rather than trusting the build.
+      ...(init?.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(init?.headers ?? {}),
     },
   });
@@ -108,6 +114,29 @@ export interface Product {
   mergedIntoId: string | null;
   categoryName: string | null;
   packs: Pack[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+export interface NewPackInput {
+  label: string;
+  qtyBase: number;
+  isDefaultSell?: boolean;
+  isDefaultBuy?: boolean;
+  barcode?: string;
+}
+
+export interface NewProductInput {
+  sku: string;
+  name: string;
+  baseUom: string;
+  categoryId: string | null;
+  isWeighed: boolean;
+  packs: NewPackInput[];
 }
 
 export interface StockLine {
@@ -278,6 +307,51 @@ export const api = {
 
   product: (id: string) =>
     request<Product & { stock: StockLine[]; movements: Movement[] }>(`/api/products/${id}`),
+
+  categories: () => request<Category[]>('/api/categories'),
+
+  createProduct: (body: NewProductInput) =>
+    request<{ id: string; sku: string; name: string }>('/api/products', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateProduct: (
+    id: string,
+    body: Partial<{
+      sku: string;
+      name: string;
+      baseUom: string;
+      categoryId: string | null;
+      isWeighed: boolean;
+      isActive: boolean;
+    }>,
+  ) => request<unknown>(`/api/products/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  addPack: (productId: string, body: NewPackInput) =>
+    request<Pack>(`/api/products/${productId}/packs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updatePack: (
+    productId: string,
+    packId: string,
+    body: Partial<{ label: string; qtyBase: number; isDefaultSell: boolean; isDefaultBuy: boolean }>,
+  ) =>
+    request<unknown>(`/api/products/${productId}/packs/${packId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  attachBarcode: (productId: string, packId: string, code: string) =>
+    request<unknown>(`/api/products/${productId}/packs/${packId}/barcodes`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  removeBarcode: (code: string) =>
+    request<unknown>(`/api/barcodes/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 
   stock: (params: { branchId?: string; search?: string; negativeOnly?: boolean; limit?: number } = {}) =>
     request<{ items: StockLine[] }>(`/api/stock${qs(params)}`),
