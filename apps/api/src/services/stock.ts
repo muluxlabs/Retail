@@ -103,6 +103,38 @@ export async function resolveBarcode(
 }
 
 /**
+ * Record a scan that did not resolve, as a work item.
+ *
+ * `resolveBarcode` throwing 404 is not, on its own, a control - the old
+ * platform let an unresolved scan pass silently, which is how
+ * under-the-counter sales stayed invisible. This is the other half: the
+ * scan itself becomes evidence with a cashier's name attached, landing in
+ * the same exception queue as every other override.
+ */
+export async function logUnlistedScan(
+  db: Db,
+  input: { code: string; branchId: string; actorId: string; terminalId?: string | null | undefined },
+): Promise<{ id: string }> {
+  const row = await db
+    .insertInto('exception_event')
+    .values({
+      event_id: crypto.randomUUID(),
+      kind: 'unlisted_barcode_scan',
+      branch_id: input.branchId,
+      terminal_id: input.terminalId ?? null,
+      actor_id: input.actorId,
+      product_id: null,
+      detail: JSON.stringify({ rawBarcode: input.code }),
+      value_impact: null,
+      currency: null,
+      occurred_at: new Date(),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  return row;
+}
+
+/**
  * Append one movement.
  *
  * Idempotent on `event_id`, and safe under concurrency. The transaction takes

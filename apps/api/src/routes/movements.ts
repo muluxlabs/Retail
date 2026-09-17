@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { parseBody } from '../validation.js';
-import { postCount, postMovement, resolveBarcode, sell } from '../services/stock.js';
+import { logUnlistedScan, postCount, postMovement, resolveBarcode, sell } from '../services/stock.js';
 
 const REASONS = [
   'grn',
@@ -49,6 +49,13 @@ const sellBody = z.object({
   terminalId: z.uuid().nullable().default(null),
   overrideNegative: z.boolean().default(false),
   overrideBy: z.uuid().nullable().default(null),
+});
+
+const unlistedScanBody = z.object({
+  code: z.string().trim().min(1).max(32),
+  branchId: z.uuid(),
+  actorId: z.uuid(),
+  terminalId: z.uuid().nullable().default(null),
 });
 
 const countBody = z.object({
@@ -127,4 +134,22 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
     const { code } = z.object({ code: z.string().trim().min(1).max(32) }).parse(request.params);
     return resolveBarcode(app.db, code);
   });
+
+  /**
+   * Log a scan that did not resolve to anything.
+   *
+   * This is the endpoint the route comment above always assumed existed. It
+   * didn't: resolveBarcode returning 404 was a dead end with nothing writing
+   * the exception it promised. Under-the-counter selling stays invisible
+   * exactly as long as this gap does.
+   */
+  app.post(
+    '/scans/unlisted',
+    { onRequest: [app.requirePermission('movement.post')] },
+    async (request, reply) => {
+      const body = parseBody(unlistedScanBody, request.body);
+      const result = await logUnlistedScan(app.db, body);
+      return reply.status(201).send(result);
+    },
+  );
 }

@@ -2,11 +2,14 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from './lib/auth.js';
 import { Spinner } from './lib/ui.js';
+import { Count } from './pages/Count.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Exceptions } from './pages/Exceptions.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { Products } from './pages/Products.js';
+import { Receive } from './pages/Receive.js';
+import { Sell } from './pages/Sell.js';
 import { Stock } from './pages/Stock.js';
 import { Users } from './pages/Users.js';
 
@@ -14,9 +17,16 @@ import { Users } from './pages/Users.js';
  * Navigation is filtered by capability, so a cashier does not see a Stock tab
  * that would only 403. This is presentation: the API refuses on its own
  * authority regardless of what is rendered here.
+ *
+ * Sell and Receive lead, ahead of the read-only screens: they are what most
+ * people who sign in actually do every day, and the exception queue exists
+ * to catch what these two get wrong.
  */
 const NAV = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
+  { to: '/sell', label: 'Sell', permission: 'movement.post' },
+  { to: '/receive', label: 'Receive', permission: 'movement.post' },
+  { to: '/count', label: 'Count', permission: 'stock.adjust' },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
@@ -89,6 +99,9 @@ export function App() {
       <main className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-6">
         <Routes>
           <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
+          <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
+          <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
+          <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />

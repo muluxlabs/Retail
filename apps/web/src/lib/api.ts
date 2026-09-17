@@ -361,6 +361,76 @@ export const api = {
   movements: (params: { branchId?: string; productId?: string; limit?: number } = {}) =>
     request<{ items: Movement[] }>(`/api/movements${qs(params)}`),
 
+  /**
+   * Post one ledger movement directly, in base units. This is what a
+   * receiving screen uses: pick a pack, enter a quantity of that pack, the
+   * UI multiplies to base units before calling this - the conversion always
+   * happens at the edge, never inside the ledger (AD-2).
+   */
+  postMovement: (body: {
+    productId: string;
+    branchId: string;
+    qtyBase: number;
+    reason: string;
+    actorId: string;
+    unitCost?: number | null;
+    docType?: string | null;
+    occurredAt?: string;
+  }) =>
+    request<{ seq: number; eventId: string; replayed: boolean; qtyAfter: number; backdated: boolean }>(
+      '/api/movements',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /** Resolve a scan to its product and pack multiplier. 404 if unlisted. */
+  resolveBarcode: (code: string) =>
+    request<{ code: string; packId: string; productId: string; qtyBase: number; productName: string }>(
+      `/api/barcodes/${encodeURIComponent(code)}`,
+    ),
+
+  /** A till sale, by barcode, in packs. */
+  sell: (body: {
+    barcode: string;
+    qtyPacks: number;
+    branchId: string;
+    actorId: string;
+    overrideNegative?: boolean;
+    overrideBy?: string | null;
+  }) =>
+    request<{ seq: number; eventId: string; replayed: boolean; qtyAfter: number }>('/api/sales', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The scan itself becomes evidence: an unresolved barcode logged as a work item. */
+  logUnlistedScan: (body: { code: string; branchId: string; actorId: string }) =>
+    request<{ id: string }>('/api/scans/unlisted', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Post a stock count. Posting is the point - an unposted count changes nothing. */
+  postCount: (body: {
+    branchId: string;
+    actorId: string;
+    lines: { productId: string; countedBase: number }[];
+  }) =>
+    request<{
+      docId: string;
+      lines: {
+        productId: string;
+        expected: number;
+        counted: number;
+        variance: number;
+        valueImpact: number | null;
+        adjustmentSeq: number | null;
+      }[];
+      summary: {
+        lines: number;
+        reconciled: number;
+        variances: number;
+        netUnits: number;
+        netValue: number;
+      };
+    }>('/api/counts', { method: 'POST', body: JSON.stringify(body) }),
+
   exceptions: (params: { state?: string; kind?: string; branchId?: string; limit?: number } = {}) =>
     request<ExceptionList>(`/api/exceptions${qs(params)}`),
 
