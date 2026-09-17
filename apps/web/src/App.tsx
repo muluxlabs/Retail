@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from './lib/auth.js';
 import { Spinner } from './lib/ui.js';
+import { Branches } from './pages/Branches.js';
 import { Cash } from './pages/Cash.js';
 import { Count } from './pages/Count.js';
 import { Dashboard } from './pages/Dashboard.js';
@@ -39,6 +40,7 @@ const NAV = [
   { to: '/products', label: 'Item master', permission: 'product.read' },
   { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
+  { to: '/branches', label: 'Branches', permission: 'branch.manage' },
 ];
 
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
@@ -127,6 +129,7 @@ export function App() {
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
           <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
+          <Route path="/branches" element={<Guard permission="branch.manage" home={home}><Branches /></Guard>} />
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>

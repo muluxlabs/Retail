@@ -341,6 +341,18 @@ export interface CashOnHandView {
   amount: number;
 }
 
+/**
+ * Operator-adjustable limits and toggles - key/value rather than bespoke
+ * columns, because the point of these is changing them without a deploy.
+ * See migration 006.
+ */
+export interface SystemSettingTable {
+  key: string;
+  value: string;
+  updated_by: string | null;
+  updated_at: Timestamp;
+}
+
 /** Applied-migration log. Owned by the runner, not by 001_core.sql. */
 export interface SchemaMigrationTable {
   filename: string;
@@ -370,6 +382,7 @@ export interface Database {
   cash_point: CashPointTable;
   cash_movement: CashMovementTable;
   cash_on_hand: CashOnHandView;
+  system_setting: SystemSettingTable;
   schema_migration: SchemaMigrationTable;
   stock_on_hand: StockOnHandView;
   product_wac: ProductWacView;

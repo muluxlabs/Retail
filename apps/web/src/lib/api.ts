@@ -365,7 +365,18 @@ export const api = {
 
   dashboard: () => request<Dashboard>('/api/dashboard'),
 
-  branches: () => request<Branch[]>('/api/branches'),
+  branches: (params: { includeInactive?: boolean } = {}) =>
+    request<Branch[]>(`/api/branches${qs(params)}`),
+
+  branchCapacity: () => request<{ activeCount: number; limit: number }>('/api/branches/capacity'),
+
+  createBranch: (body: { code: string; name: string; kind: 'store' | 'warehouse' }) =>
+    request<Branch>('/api/branches', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateBranch: (
+    id: string,
+    body: Partial<{ code: string; name: string; kind: 'store' | 'warehouse'; isActive: boolean }>,
+  ) => request<Branch>(`/api/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   people: () => request<Person[]>('/api/people'),
 
   products: (params: { search?: string; limit?: number; offset?: number } = {}) =>
