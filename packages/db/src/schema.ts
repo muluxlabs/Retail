@@ -259,6 +259,41 @@ export interface RolePermissionTable {
   permission_id: string;
 }
 
+export type TransferState = 'dispatched' | 'received' | 'cancelled';
+
+/**
+ * Branch-to-branch transfer. See migration 004: the workflow state lives
+ * here, the ledger only ever records the two definitive events (dispatch,
+ * confirmed receipt).
+ */
+export interface TransferTable {
+  id: Generated<string>;
+  reference: string;
+  origin_branch_id: string;
+  destination_branch_id: string;
+  state: ColumnType<TransferState, TransferState | undefined, TransferState>;
+  dispatched_by: string;
+  dispatched_at: SuppliedTimestamp;
+  received_by: string | null;
+  received_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  cancelled_by: string | null;
+  cancelled_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  notes: string | null;
+}
+
+export interface TransferLineTable {
+  id: Generated<string>;
+  transfer_id: string;
+  product_id: string;
+  /** What left the origin, in base units. Set at dispatch, never revised. */
+  qty_dispatched: number;
+  /** What arrived, in base units. NULL until received. */
+  qty_received: number | null;
+  unit_cost: number | null;
+  dispatch_movement_seq: number | null;
+  receipt_movement_seq: number | null;
+}
+
 /** Applied-migration log. Owned by the runner, not by 001_core.sql. */
 export interface SchemaMigrationTable {
   filename: string;
@@ -283,6 +318,8 @@ export interface Database {
   user_session: UserSessionTable;
   permission: PermissionTable;
   role_permission: RolePermissionTable;
+  transfer: TransferTable;
+  transfer_line: TransferLineTable;
   schema_migration: SchemaMigrationTable;
   stock_on_hand: StockOnHandView;
   product_wac: ProductWacView;

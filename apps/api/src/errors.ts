@@ -34,6 +34,11 @@ const STATUS_BY_CODE: Record<string, number> = {
   PRODUCT_MERGED: 409,
   INVALID_MOVEMENT: 422,
   UNKNOWN_MOVEMENT: 404,
+  // A transfer id that does not exist.
+  TRANSFER_NOT_FOUND: 404,
+  // The transfer exists, but is not in the state the request needs it to be
+  // in - already received, already cancelled. A conflict, not a 404.
+  TRANSFER_NOT_OPEN: 409,
 };
 
 export interface ErrorBody {

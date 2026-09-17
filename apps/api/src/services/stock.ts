@@ -150,109 +150,124 @@ export async function postMovement(
   db: Db,
   input: PostMovementInput,
 ): Promise<PostMovementResult> {
+  return db.transaction().execute((tx) => postMovementInTx(tx, input));
+}
+
+/**
+ * The same operation, against a transaction the caller already holds.
+ *
+ * `postMovement` above opens its own transaction, which is right for a
+ * single call but wrong for a multi-line operation like dispatching a
+ * transfer: nesting a Kysely transaction inside another only produces a
+ * SAVEPOINT, not the single atomic unit a multi-line dispatch actually
+ * needs (all lines commit together, or none do). Callers that already have
+ * a `tx` - transfer.ts - call this directly instead.
+ */
+export async function postMovementInTx(
+  tx: Tx,
+  input: PostMovementInput,
+): Promise<PostMovementResult> {
   const eventId = input.eventId ?? crypto.randomUUID();
   const occurredAt = input.occurredAt ?? new Date();
 
-  return db.transaction().execute(async (tx) => {
-    // Serialise on the position before reading anything about it. Held until
-    // the transaction ends, so the replay check and the stock check below are
-    // both taken against a position nobody else can move underneath us.
-    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${
-      input.productId + input.branchId
-    }, 0))`.execute(tx);
+  // Serialise on the position before reading anything about it. Held until
+  // the transaction ends, so the replay check and the stock check below are
+  // both taken against a position nobody else can move underneath us.
+  await sql`SELECT pg_advisory_xact_lock(hashtextextended(${
+    input.productId + input.branchId
+  }, 0))`.execute(tx);
 
-    // Replay check, so a resynced event stays a no-op even if the stock
-    // position has changed since it was first accepted.
-    const existing = await tx
-      .selectFrom('stock_movement')
-      .select(['seq'])
-      .where('event_id', '=', eventId)
-      .executeTakeFirst();
+  // Replay check, so a resynced event stays a no-op even if the stock
+  // position has changed since it was first accepted.
+  const existing = await tx
+    .selectFrom('stock_movement')
+    .select(['seq'])
+    .where('event_id', '=', eventId)
+    .executeTakeFirst();
 
-    if (existing !== undefined) {
-      return {
-        seq: existing.seq,
-        eventId,
-        replayed: true,
-        qtyAfter: await onHand(tx, input.productId, input.branchId),
-        backdated: false,
-      };
-    }
+  if (existing !== undefined) {
+    return {
+      seq: existing.seq,
+      eventId,
+      replayed: true,
+      qtyAfter: await onHand(tx, input.productId, input.branchId),
+      backdated: false,
+    };
+  }
 
-    const product = await tx
-      .selectFrom('product')
-      .select(['id', 'merged_into_id'])
-      .where('id', '=', input.productId)
-      .executeTakeFirst();
+  const product = await tx
+    .selectFrom('product')
+    .select(['id', 'merged_into_id'])
+    .where('id', '=', input.productId)
+    .executeTakeFirst();
 
-    if (product === undefined) {
-      const { InvalidMasterData } = await import('@retail-ops/domain');
-      throw new InvalidMasterData(`Unknown product: ${input.productId}`, {
-        productId: input.productId,
-      });
-    }
-    if (product.merged_into_id !== null) {
-      const { ProductMerged } = await import('@retail-ops/domain');
-      throw new ProductMerged(product.id, product.merged_into_id);
-    }
+  if (product === undefined) {
+    const { InvalidMasterData } = await import('@retail-ops/domain');
+    throw new InvalidMasterData(`Unknown product: ${input.productId}`, {
+      productId: input.productId,
+    });
+  }
+  if (product.merged_into_id !== null) {
+    const { ProductMerged } = await import('@retail-ops/domain');
+    throw new ProductMerged(product.id, product.merged_into_id);
+  }
 
-    if (input.qtyBase < 0) {
-      const available = await onHand(tx, input.productId, input.branchId);
-      assertStockAvailable(available, input.qtyBase, {
-        allowNegative: input.allowNegative ?? false,
-      });
-    }
+  if (input.qtyBase < 0) {
+    const available = await onHand(tx, input.productId, input.branchId);
+    assertStockAvailable(available, input.qtyBase, {
+      allowNegative: input.allowNegative ?? false,
+    });
+  }
 
-    const inserted = await tx
-      .insertInto('stock_movement')
+  const inserted = await tx
+    .insertInto('stock_movement')
+    .values({
+      event_id: eventId,
+      product_id: input.productId,
+      branch_id: input.branchId,
+      qty_base: input.qtyBase,
+      unit_cost: input.unitCost ?? null,
+      reason: input.reason,
+      doc_type: input.docType ?? null,
+      doc_id: input.docId ?? null,
+      reverses_seq: null,
+      actor_id: input.actorId,
+      terminal_id: input.terminalId ?? null,
+      occurred_at: occurredAt,
+    })
+    .returning(['seq', 'recorded_at'])
+    .executeTakeFirstOrThrow();
+
+  const backdated = isBackdated(occurredAt, inserted.recorded_at);
+  if (backdated) {
+    await tx
+      .insertInto('exception_event')
       .values({
-        event_id: eventId,
-        product_id: input.productId,
+        event_id: crypto.randomUUID(),
+        kind: 'backdated_entry',
         branch_id: input.branchId,
-        qty_base: input.qtyBase,
-        unit_cost: input.unitCost ?? null,
-        reason: input.reason,
-        doc_type: input.docType ?? null,
-        doc_id: input.docId ?? null,
-        reverses_seq: null,
-        actor_id: input.actorId,
         terminal_id: input.terminalId ?? null,
+        actor_id: input.actorId,
+        product_id: input.productId,
+        detail: JSON.stringify({
+          movementSeq: inserted.seq,
+          gapHours: backdateGapHours(occurredAt, inserted.recorded_at),
+          docType: input.docType ?? null,
+        }),
+        value_impact: null,
+        currency: null,
         occurred_at: occurredAt,
       })
-      .returning(['seq', 'recorded_at'])
-      .executeTakeFirstOrThrow();
+      .execute();
+  }
 
-    const backdated = isBackdated(occurredAt, inserted.recorded_at);
-    if (backdated) {
-      await tx
-        .insertInto('exception_event')
-        .values({
-          event_id: crypto.randomUUID(),
-          kind: 'backdated_entry',
-          branch_id: input.branchId,
-          terminal_id: input.terminalId ?? null,
-          actor_id: input.actorId,
-          product_id: input.productId,
-          detail: JSON.stringify({
-            movementSeq: inserted.seq,
-            gapHours: backdateGapHours(occurredAt, inserted.recorded_at),
-            docType: input.docType ?? null,
-          }),
-          value_impact: null,
-          currency: null,
-          occurred_at: occurredAt,
-        })
-        .execute();
-    }
-
-    return {
-      seq: inserted.seq,
-      eventId,
-      replayed: false,
-      qtyAfter: await onHand(tx, input.productId, input.branchId),
-      backdated,
-    };
-  });
+  return {
+    seq: inserted.seq,
+    eventId,
+    replayed: false,
+    qtyAfter: await onHand(tx, input.productId, input.branchId),
+    backdated,
+  };
 }
 
 export interface SellInput {

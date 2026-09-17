@@ -11,6 +11,7 @@ import { Products } from './pages/Products.js';
 import { Receive } from './pages/Receive.js';
 import { Sell } from './pages/Sell.js';
 import { Stock } from './pages/Stock.js';
+import { Transfers } from './pages/Transfers.js';
 import { Users } from './pages/Users.js';
 
 /**
@@ -27,6 +28,7 @@ const NAV = [
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
   { to: '/receive', label: 'Receive', permission: 'movement.post' },
   { to: '/count', label: 'Count', permission: 'stock.adjust' },
+  { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
@@ -102,6 +104,7 @@ export function App() {
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
           <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
+          <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />

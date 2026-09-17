@@ -241,6 +241,49 @@ export interface CurrentUser {
   mustChangePassword: boolean;
 }
 
+export type TransferState = 'dispatched' | 'received' | 'cancelled';
+
+export interface TransferSummary {
+  id: string;
+  reference: string;
+  state: TransferState;
+  originBranchCode: string;
+  destinationBranchCode: string;
+  dispatchedAt: string;
+  lineCount: number;
+}
+
+export interface TransferLine {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  qtyDispatched: number;
+  qtyReceived: number | null;
+  unitCost: number | null;
+  variance: number | null;
+  valueImpact: number | null;
+}
+
+export interface TransferDetail {
+  id: string;
+  reference: string;
+  state: TransferState;
+  originBranchId: string;
+  originBranchCode: string;
+  destinationBranchId: string;
+  destinationBranchCode: string;
+  dispatchedBy: string;
+  dispatchedByName: string | null;
+  dispatchedAt: string;
+  receivedBy: string | null;
+  receivedByName: string | null;
+  receivedAt: string | null;
+  cancelledAt: string | null;
+  notes: string | null;
+  lines: TransferLine[];
+}
+
 export interface UserRow {
   id: string;
   fullName: string;
@@ -430,6 +473,37 @@ export const api = {
         netValue: number;
       };
     }>('/api/counts', { method: 'POST', body: JSON.stringify(body) }),
+
+  // -- transfers ---------------------------------------------------------
+  transfers: (params: { branchId?: string; state?: TransferState } = {}) =>
+    request<{ items: TransferSummary[] }>(`/api/transfers${qs(params)}`),
+
+  transfer: (id: string) => request<TransferDetail>(`/api/transfers/${id}`),
+
+  /** Dispatch stock to another branch. Blocked the same way overselling is. */
+  dispatchTransfer: (body: {
+    originBranchId: string;
+    destinationBranchId: string;
+    notes?: string | null;
+    lines: { productId: string; qtyDispatched: number }[];
+  }) =>
+    request<{ id: string; reference: string }>('/api/transfers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Credits the destination for exactly what this call says arrived. */
+  receiveTransfer: (id: string, lines: { productId: string; qtyReceived: number }[]) =>
+    request<TransferDetail>(`/api/transfers/${id}/receive`, {
+      method: 'POST',
+      body: JSON.stringify({ lines }),
+    }),
+
+  cancelTransfer: (id: string, reason?: string) =>
+    request<TransferDetail>(`/api/transfers/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ ...(reason === undefined ? {} : { reason }) }),
+    }),
 
   exceptions: (params: { state?: string; kind?: string; branchId?: string; limit?: number } = {}) =>
     request<ExceptionList>(`/api/exceptions${qs(params)}`),
