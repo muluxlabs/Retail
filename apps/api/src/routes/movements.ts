@@ -37,7 +37,18 @@ const movementBody = z.object({
   docId: z.uuid().nullable().default(null),
   terminalId: z.uuid().nullable().default(null),
   occurredAt: z.coerce.date().optional(),
-  allowNegative: z.boolean().default(false),
+  // Deliberately NOT a field here. allowNegative bypasses the negative-stock
+  // guard entirely, and /api/sales is the only place a client is allowed to
+  // ask for that - gated on stock.override, and logged as an exception when
+  // used. Internal callers that legitimately need it (postCount's shortage
+  // adjustments, cancelTransfer's reversal) call postMovement/postMovementInTx
+  // directly in TypeScript, never through this HTTP route, so they are
+  // unaffected by its absence here. A generic movement.post holder posting
+  // straight through this endpoint gets exactly the same block an
+  // overselling till does, with no way to lift it - that used to not be
+  // true, and it was a real hole: confirmed live, a cashier with no
+  // stock.override could drive stock to -999,895 through this endpoint
+  // alone, bypassing the same control /api/sales correctly enforces.
 });
 
 const sellBody = z.object({
