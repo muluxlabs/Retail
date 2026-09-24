@@ -173,7 +173,8 @@ export type ExceptionKind =
   | 'cash_variance'
   | 'price_override'
   | 'void_after_tender'
-  | 'unreviewed_product';
+  | 'unreviewed_product'
+  | 'stock_reset';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -324,6 +325,8 @@ export interface ReportFigures {
   unitsTransferredIn: number;
   unitsWrittenOff: number;
   unitsAdjustedNet: number;
+  /** Stock zeroed by a branch reset (mostly negative). */
+  unitsResetNet: number;
 }
 
 export interface ReportBucket extends ReportFigures {
@@ -349,6 +352,28 @@ export interface MovementReport {
   byCategory: (ReportFigures & { categoryName: string })[];
   /** ISO weekday: 1 = Monday .. 7 = Sunday. Only weekdays with activity appear. */
   byWeekday: (ReportFigures & { weekday: number })[];
+}
+
+/** What a branch reset is about to zero, read at the moment it is asked for. */
+export interface ResetPreview {
+  branchId: string;
+  branchCode: string;
+  branchName: string;
+  /** Positions that will be set to zero. */
+  resettable: number;
+  unitsOnHand: number;
+  /** Units the ledger says are impossible, as a positive count. */
+  unitsBelowZero: number;
+  valueAtCost: number;
+  withoutCost: number;
+  /** Non-zero positions on merged products, which accept no movements and are left out. */
+  skippedMerged: number;
+}
+
+export interface ResetResult extends ResetPreview {
+  /** Null when there was nothing to zero. */
+  docId: string | null;
+  exceptionId: string | null;
 }
 
 export interface SettingRow {
@@ -698,6 +723,19 @@ export const api = {
     categoryId?: string;
     productId?: string;
   }) => request<MovementReport>(`/api/reports/movements${qs(params)}`),
+
+  stockResetPreview: (branchId: string) =>
+    request<ResetPreview>(`/api/branches/${branchId}/stock-reset/preview`),
+
+  /** Cannot be undone. The server re-reads the stock and refuses if it differs from what was previewed. */
+  resetBranchStock: (
+    branchId: string,
+    body: { confirmCode: string; reason: string; expectedPositions: number },
+  ) =>
+    request<ResetResult>(`/api/branches/${branchId}/stock-reset`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   settings: () => request<SettingRow[]>('/api/settings'),
 

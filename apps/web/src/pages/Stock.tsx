@@ -9,9 +9,12 @@
 import { useState } from 'react';
 
 import { api } from '../lib/api.js';
+import { useAuth } from '../lib/auth.js';
 import { Badge, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
+import { StartFresh } from './StartFresh.js';
 
 export function Stock() {
+  const { can } = useAuth();
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
   const [negativeOnly, setNegativeOnly] = useState(false);
@@ -45,6 +48,12 @@ export function Stock() {
             Shown
           </div>
           <div className="tnum text-base font-semibold">{money(totalValue)}</div>
+          {/* The panel sits below a long list; a manager who needs it should not have to hunt. */}
+          {can('stock.reset') && (
+            <a href="#start-fresh" className="mt-1 block text-[11.5px] text-red-700 hover:underline">
+              Start a branch fresh ↓
+            </a>
+          )}
         </div>
       </div>
 
@@ -145,6 +154,12 @@ export function Stock() {
           </div>
         )}
       </Card>
+
+      {can('stock.reset') && (
+        <div id="start-fresh" className="scroll-mt-20">
+          <StartFresh />
+        </div>
+      )}
     </div>
   );
 }

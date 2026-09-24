@@ -41,6 +41,12 @@ const STATUS_BY_CODE: Record<string, number> = {
   // The transfer exists, but is not in the state the request needs it to be
   // in - already received, already cancelled. A conflict, not a 404.
   TRANSFER_NOT_OPEN: 409,
+  // A reset was reviewed against stock that has since moved.
+  STOCK_RESET_STALE: 409,
+  // The typed confirmation did not match the branch.
+  CONFIRMATION_MISMATCH: 422,
+  // Scoped to one branch, reaching for another.
+  OUTSIDE_BRANCH_SCOPE: 403,
 };
 
 export interface ErrorBody {

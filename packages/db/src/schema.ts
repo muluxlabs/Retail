@@ -28,7 +28,8 @@ export type MovementReason =
   | 'transfer_loss'
   | 'count_adjustment'
   | 'write_off'
-  | 'opening_balance';
+  | 'opening_balance'
+  | 'stock_reset';
 
 export type ExceptionKind =
   | 'negative_stock_override'
@@ -39,7 +40,8 @@ export type ExceptionKind =
   | 'cash_variance'
   | 'price_override'
   | 'void_after_tender'
-  | 'unreviewed_product';
+  | 'unreviewed_product'
+  | 'stock_reset';
 
 export type ProductReviewState = 'approved' | 'pending';
 

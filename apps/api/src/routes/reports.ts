@@ -61,6 +61,12 @@ function aggregates() {
     sql<number>`round(coalesce(sum(qty_base) filter (where reason = 'count_adjustment'), 0), 4)`.as(
       'unitsAdjustedNet',
     ),
+    // A branch started fresh. Signed, like a count adjustment: mostly negative
+    // (stock zeroed out), occasionally positive (negative positions raised to
+    // zero). Kept apart from write-offs so a fresh start never reads as loss.
+    sql<number>`round(coalesce(sum(qty_base) filter (where reason = 'stock_reset'), 0), 4)`.as(
+      'unitsResetNet',
+    ),
   ] as const;
 }
 
@@ -164,6 +170,7 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
         unitsTransferredIn: 0,
         unitsWrittenOff: 0,
         unitsAdjustedNet: 0,
+        unitsResetNet: 0,
       },
       buckets,
       byProduct,

@@ -381,6 +381,7 @@ function ReportBody({
     unitsTransferredIn: 0,
     unitsWrittenOff: 0,
     unitsAdjustedNet: 0,
+    unitsResetNet: 0,
   }));
   const versus = prevDays === 1 ? 'than the day before' : `than the ${prevDays} days before`;
 
@@ -390,7 +391,8 @@ function ReportBody({
     s.unitsTransferredOut -
     s.unitsSold -
     s.unitsWrittenOff +
-    s.unitsAdjustedNet;
+    s.unitsAdjustedNet +
+    s.unitsResetNet;
 
   // -- the cuts, each ranked and trimmed for its chart ---------------------------
   const topSold = data.topSellers.map((p) => ({
@@ -475,7 +477,7 @@ function ReportBody({
         <KpiTile
           label="Net stock change"
           value={`${net > 0 ? '+' : ''}${qty(net)}`}
-          sub="Received − sold − written off, ± transfers and counts"
+          sub="Received − sold − written off, ± transfers, counts and resets"
         />
       </div>
 
@@ -498,6 +500,7 @@ function ReportBody({
                   'transferred in',
                   'written off',
                   'adjusted (net)',
+                  'reset (net)',
                 ],
                 buckets.map((b) => [
                   b.bucket,
@@ -508,6 +511,7 @@ function ReportBody({
                   b.unitsTransferredIn,
                   b.unitsWrittenOff,
                   b.unitsAdjustedNet,
+                  b.unitsResetNet,
                 ]),
               )
             }
@@ -533,7 +537,7 @@ function ReportBody({
         }
         table={
           <MiniTable
-            head={[kind, 'Sold', 'Received', 'Cost received', 'Transfers in', 'Transfers out', 'Written off', 'Adjusted']}
+            head={[kind, 'Sold', 'Received', 'Cost received', 'Transfers in', 'Transfers out', 'Written off', 'Adjusted', 'Reset']}
             rows={buckets.map((b) => [
               bucketHeading(b.bucket, kind),
               b.unitsSold,
@@ -543,6 +547,7 @@ function ReportBody({
               b.unitsTransferredOut,
               b.unitsWrittenOff,
               b.unitsAdjustedNet,
+              b.unitsResetNet,
             ])}
           />
         }

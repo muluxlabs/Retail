@@ -25,6 +25,7 @@ import { registerProductRoutes } from './routes/products.js';
 import { registerReferenceRoutes } from './routes/reference.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerSettingsRoutes } from './routes/settings.js';
+import { registerStockResetRoutes } from './routes/stockReset.js';
 import { registerStockRoutes } from './routes/stock.js';
 
 declare module 'fastify' {
@@ -81,6 +82,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       await api.register(registerDashboardRoutes);
       await api.register(registerSettingsRoutes);
       await api.register(registerReportRoutes);
+      await api.register(registerStockResetRoutes);
     },
     { prefix: '/api' },
   );
