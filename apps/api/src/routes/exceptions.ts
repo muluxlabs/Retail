@@ -24,6 +24,7 @@ const KINDS = [
   'cash_variance',
   'price_override',
   'void_after_tender',
+  'unreviewed_product',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

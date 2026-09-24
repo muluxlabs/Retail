@@ -54,6 +54,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   cash_variance: 'Cash variance',
   price_override: 'Price override',
   void_after_tender: 'Void after tender',
+  unreviewed_product: 'Product added at the till',
 };
 
 /**
@@ -69,6 +70,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   cash_variance: 'Declared cash did not match counted cash.',
   price_override: 'An item was sold away from its list price.',
   void_after_tender: 'A line was voided after payment was taken.',
+  unreviewed_product: 'A cashier could not find this item and added it to finish the sale.',
 };
 
 // -- primitives --------------------------------------------------------------

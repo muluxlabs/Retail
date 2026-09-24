@@ -7,15 +7,49 @@
  * packs would reproduce the view that hid the defect.
  */
 
+import type { Database } from '@retail-ops/db';
 import type { FastifyInstance } from 'fastify';
+import type { Transaction } from 'kysely';
 import { z } from 'zod';
 
 import { parseQuery, parseParams, parseBody } from '../validation.js';
+
+/**
+ * Clear the `unreviewed_product` exception this product's quick-add raised,
+ * if it is still open. Approve and merge both resolve the product itself;
+ * this is what closes the matching work item in the same step, so a
+ * reviewed product does not also sit in the queue looking unresolved.
+ * Silently a no-op if none is found - an admin-created product was never
+ * pending in the first place and never raised one.
+ */
+async function clearReviewException(
+  tx: Transaction<Database>,
+  productId: string,
+  clearedBy: string,
+  note: string,
+): Promise<void> {
+  const exception = await tx
+    .selectFrom('exception_event')
+    .select('id')
+    .where('product_id', '=', productId)
+    .where('kind', '=', 'unreviewed_product')
+    .where('state', '!=', 'cleared')
+    .executeTakeFirst();
+
+  if (exception === undefined) return;
+
+  await tx
+    .updateTable('exception_event')
+    .set({ state: 'cleared', cleared_by: clearedBy, cleared_at: new Date(), clearing_note: note })
+    .where('id', '=', exception.id)
+    .execute();
+}
 
 const listQuery = z.object({
   search: z.string().trim().min(1).max(200).optional(),
   categoryId: z.uuid().optional(),
   includeInactive: z.coerce.boolean().default(false),
+  reviewState: z.enum(['approved', 'pending']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -72,6 +106,27 @@ const attachBarcode = z.object({
   symbology: z.enum(['ean13', 'ean8', 'upca', 'internal', 'embedded_weight']).default('ean13'),
 });
 
+const quickAddProduct = z.object({
+  name: z.string().trim().min(1).max(200),
+  barcode: z.string().trim().min(1).max(32).optional(),
+  branchId: z.uuid(),
+  terminalId: z.uuid().nullable().default(null),
+});
+
+const approveProduct = z.object({
+  categoryId: z.uuid().nullable().optional(),
+  name: z.string().trim().min(1).max(200).optional(),
+  sku: z.string().trim().min(1).max(64).optional(),
+  baseUom: z.string().trim().min(1).max(16).optional(),
+  isWeighed: z.boolean().optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+const mergeProduct = z.object({
+  targetProductId: z.uuid(),
+  note: z.string().trim().max(1000).optional(),
+});
+
 export async function registerProductRoutes(app: FastifyInstance): Promise<void> {
   /** List the item master, newest first, with pack and barcode counts. */
   app.get('/products', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
@@ -88,12 +143,14 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         'product.is_weighed as isWeighed',
         'product.is_active as isActive',
         'product.merged_into_id as mergedIntoId',
+        'product.review_state as reviewState',
         'product.created_at as createdAt',
         'product_category.name as categoryName',
       ]);
 
     if (q.includeInactive !== true) query = query.where('product.is_active', '=', true);
     if (q.categoryId !== undefined) query = query.where('product.category_id', '=', q.categoryId);
+    if (q.reviewState !== undefined) query = query.where('product.review_state', '=', q.reviewState);
     if (q.search !== undefined) {
       const term = `%${q.search}%`;
       query = query.where((eb) =>
@@ -163,6 +220,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         'product.is_weighed as isWeighed',
         'product.is_active as isActive',
         'product.merged_into_id as mergedIntoId',
+        'product.review_state as reviewState',
         'product.created_at as createdAt',
         'product_category.name as categoryName',
       ])
@@ -257,6 +315,11 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
           category_id: body.categoryId,
           is_weighed: body.isWeighed,
           merged_into_id: null,
+          // Built through the full item-master form, by someone who holds
+          // product.write - trusted the moment it is created, unlike a
+          // till quick-add.
+          review_state: 'approved',
+          created_by: actor.personId,
         })
         .returning(['id', 'sku', 'name'])
         .executeTakeFirstOrThrow();
@@ -613,6 +676,303 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
       });
 
       return reply.status(204).send();
+    },
+  );
+
+  /**
+   * A cashier or receiver adds a product on the fly, mid-transaction,
+   * because it has no barcode match and is not in the searchable list.
+   *
+   * This is deliberately the narrowest possible create: a name, an optional
+   * code, one pack (a single, sellable and buyable). It lands as
+   * review_state='pending' and raises an `unreviewed_product` exception in
+   * the same queue every other override lands in - a branch manager or
+   * admin reviews it from there, same as anything else. The product is
+   * still fully real and sellable the instant it is created: the cashier
+   * needs to finish the sale now, not wait on a review.
+   */
+  app.post(
+    '/products/quick-add',
+    { onRequest: [app.requirePermission('product.quickadd')] },
+    async (request, reply) => {
+      const body = parseBody(quickAddProduct, request.body);
+      const actor = request.user;
+      if (actor === null) {
+        return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
+      }
+
+      // A real SKU is master-data work for whoever reviews this; until then
+      // it only needs to be unique.
+      const sku = `QA-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+
+      const created = await app.db.transaction().execute(async (tx) => {
+        const product = await tx
+          .insertInto('product')
+          .values({
+            sku,
+            name: body.name,
+            base_uom: 'each',
+            category_id: null,
+            is_weighed: false,
+            merged_into_id: null,
+            review_state: 'pending',
+            created_by: actor.personId,
+          })
+          .returning(['id', 'sku', 'name'])
+          .executeTakeFirstOrThrow();
+
+        const pack = await tx
+          .insertInto('product_pack')
+          .values({
+            product_id: product.id,
+            label: 'single',
+            qty_base: 1,
+            is_default_sell: true,
+            is_default_buy: true,
+          })
+          .returning(['id', 'qty_base'])
+          .executeTakeFirstOrThrow();
+
+        if (body.barcode !== undefined) {
+          await tx
+            .insertInto('barcode')
+            .values({ code: body.barcode, pack_id: pack.id, symbology: 'ean13' })
+            .execute();
+        }
+
+        const exception = await tx
+          .insertInto('exception_event')
+          .values({
+            event_id: crypto.randomUUID(),
+            kind: 'unreviewed_product',
+            branch_id: body.branchId,
+            terminal_id: body.terminalId,
+            actor_id: actor.personId,
+            product_id: product.id,
+            detail: JSON.stringify({ name: body.name, barcode: body.barcode ?? null, sku }),
+            value_impact: null,
+            currency: null,
+            occurred_at: new Date(),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+
+        await tx
+          .insertInto('audit_log')
+          .values({
+            event_id: crypto.randomUUID(),
+            action_code: 'PRODUCT_QUICKADDED',
+            actor_id: actor.personId,
+            terminal_id: body.terminalId,
+            branch_id: body.branchId,
+            entity_type: 'product',
+            entity_id: product.id,
+            state_before: null,
+            state_after: JSON.stringify({ sku, name: body.name, barcode: body.barcode ?? null }),
+            occurred_at: new Date(),
+          })
+          .execute();
+
+        return { product, pack, exceptionId: exception.id };
+      });
+
+      return reply.status(201).send({
+        id: created.product.id,
+        sku: created.product.sku,
+        name: created.product.name,
+        packId: created.pack.id,
+        qtyBase: created.pack.qty_base,
+        barcode: body.barcode ?? null,
+        exceptionId: created.exceptionId,
+      });
+    },
+  );
+
+  /**
+   * Accept a pending product into the real item master: assign it a proper
+   * category (and correct anything else about it), and clear it.
+   *
+   * This is the "it genuinely didn't exist" resolution. The companion path
+   * for "it did exist, the cashier just didn't find it" is merge, below.
+   */
+  app.post(
+    '/products/:id/approve',
+    { onRequest: [app.requirePermission('product.write')] },
+    async (request, reply) => {
+      const { id } = parseParams(idParams, request.params);
+      const body = parseBody(approveProduct, request.body);
+      const actor = request.user;
+      if (actor === null) {
+        return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
+      }
+
+      const before = await app.db
+        .selectFrom('product')
+        .select(['id', 'sku', 'name', 'category_id', 'base_uom', 'is_weighed', 'review_state'])
+        .where('id', '=', id)
+        .executeTakeFirst();
+
+      if (before === undefined) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No product ${id}` } });
+      }
+      if (before.review_state !== 'pending') {
+        return reply.status(409).send({
+          error: { code: 'NOT_PENDING', message: 'This product is not awaiting review.' },
+        });
+      }
+
+      const updated = await app.db.transaction().execute(async (tx) => {
+        const row = await tx
+          .updateTable('product')
+          .set({
+            review_state: 'approved',
+            ...(body.categoryId !== undefined ? { category_id: body.categoryId } : {}),
+            ...(body.name !== undefined ? { name: body.name } : {}),
+            ...(body.sku !== undefined ? { sku: body.sku } : {}),
+            ...(body.baseUom !== undefined ? { base_uom: body.baseUom } : {}),
+            ...(body.isWeighed !== undefined ? { is_weighed: body.isWeighed } : {}),
+          })
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        await tx
+          .insertInto('audit_log')
+          .values({
+            event_id: crypto.randomUUID(),
+            action_code: 'PRODUCT_APPROVED',
+            actor_id: actor.personId,
+            terminal_id: null,
+            branch_id: null,
+            entity_type: 'product',
+            entity_id: id,
+            state_before: JSON.stringify(before),
+            state_after: JSON.stringify(body),
+            occurred_at: new Date(),
+          })
+          .execute();
+
+        await clearReviewException(tx, id, actor.personId, body.note ?? `Approved into the item master.`);
+
+        return row;
+      });
+
+      return updated;
+    },
+  );
+
+  /**
+   * The other resolution: a pending product turns out to be a duplicate of
+   * something already in the master, created only because the cashier
+   * could not find the existing one. Points it at the real product via the
+   * same merged_into_id the cleanse workflow already uses - it keeps its
+   * own history, stops accepting new movements, and its barcode (if it
+   * scanned one) moves to the target's default-sell pack so the code
+   * resolves correctly from here on.
+   */
+  app.post(
+    '/products/:id/merge',
+    { onRequest: [app.requirePermission('product.write')] },
+    async (request, reply) => {
+      const { id } = parseParams(idParams, request.params);
+      const body = parseBody(mergeProduct, request.body);
+      const actor = request.user;
+      if (actor === null) {
+        return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
+      }
+      if (body.targetProductId === id) {
+        return reply.status(422).send({
+          error: { code: 'INVALID_MERGE', message: 'A product cannot be merged into itself.' },
+        });
+      }
+
+      const [source, target] = await Promise.all([
+        app.db
+          .selectFrom('product')
+          .select(['id', 'name', 'review_state', 'merged_into_id'])
+          .where('id', '=', id)
+          .executeTakeFirst(),
+        app.db
+          .selectFrom('product')
+          .select(['id', 'name', 'merged_into_id'])
+          .where('id', '=', body.targetProductId)
+          .executeTakeFirst(),
+      ]);
+
+      if (source === undefined) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No product ${id}` } });
+      }
+      if (target === undefined) {
+        return reply.status(404).send({
+          error: { code: 'NOT_FOUND', message: `No product ${body.targetProductId}` },
+        });
+      }
+      if (target.merged_into_id !== null) {
+        return reply.status(422).send({
+          error: {
+            code: 'INVALID_MERGE',
+            message: 'The target product is itself merged into another product.',
+          },
+        });
+      }
+
+      const updated = await app.db.transaction().execute(async (tx) => {
+        const row = await tx
+          .updateTable('product')
+          .set({ merged_into_id: body.targetProductId, review_state: 'approved' })
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+
+        // Redirect the source's barcodes, if it has any, onto the target's
+        // default-sell pack so a future scan of the same code resolves to
+        // the product it was actually merged into.
+        const targetPack = await tx
+          .selectFrom('product_pack')
+          .select('id')
+          .where('product_id', '=', body.targetProductId)
+          .where('is_default_sell', '=', true)
+          .executeTakeFirst();
+
+        if (targetPack !== undefined) {
+          await tx
+            .updateTable('barcode')
+            .set({ pack_id: targetPack.id })
+            .where(
+              'pack_id',
+              'in',
+              tx.selectFrom('product_pack').select('id').where('product_id', '=', id),
+            )
+            .execute();
+        }
+
+        await tx
+          .insertInto('audit_log')
+          .values({
+            event_id: crypto.randomUUID(),
+            action_code: 'PRODUCT_MERGED',
+            actor_id: actor.personId,
+            terminal_id: null,
+            branch_id: null,
+            entity_type: 'product',
+            entity_id: id,
+            state_before: JSON.stringify({ mergedIntoId: null }),
+            state_after: JSON.stringify({ mergedIntoId: body.targetProductId }),
+            occurred_at: new Date(),
+          })
+          .execute();
+
+        await clearReviewException(
+          tx,
+          id,
+          actor.personId,
+          body.note ?? `Merged into ${target.name}.`,
+        );
+
+        return row;
+      });
+
+      return updated;
     },
   );
 

@@ -112,6 +112,7 @@ export interface Product {
   isWeighed: boolean;
   isActive: boolean;
   mergedIntoId: string | null;
+  reviewState: 'approved' | 'pending';
   categoryName: string | null;
   packs: Pack[];
 }
@@ -379,7 +380,14 @@ export const api = {
   ) => request<Branch>(`/api/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   people: () => request<Person[]>('/api/people'),
 
-  products: (params: { search?: string; limit?: number; offset?: number } = {}) =>
+  products: (
+    params: {
+      search?: string;
+      reviewState?: 'approved' | 'pending';
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) =>
     request<{ items: Product[]; total: number; limit: number; offset: number }>(
       `/api/products${qs(params)}`,
     ),
@@ -406,6 +414,44 @@ export const api = {
       isActive: boolean;
     }>,
   ) => request<unknown>(`/api/products/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /**
+   * A cashier or receiver adds a product on the fly, mid-transaction. It
+   * lands in review, not the trusted master - the response is enough to
+   * finish the sale immediately (productId + packId, straight into `sell`).
+   */
+  quickAddProduct: (body: {
+    name: string;
+    barcode?: string;
+    branchId: string;
+    terminalId?: string | null;
+  }) =>
+    request<{
+      id: string;
+      sku: string;
+      name: string;
+      packId: string;
+      qtyBase: number;
+      barcode: string | null;
+      exceptionId: string;
+    }>('/api/products/quick-add', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Accept a pending product into the master under the right category. */
+  approveProduct: (
+    id: string,
+    body: Partial<{
+      categoryId: string | null;
+      name: string;
+      sku: string;
+      baseUom: string;
+      isWeighed: boolean;
+      note: string;
+    }>,
+  ) => request<Product>(`/api/products/${id}/approve`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** A pending product turns out to be a duplicate; point it at the real one. */
+  mergeProduct: (id: string, body: { targetProductId: string; note?: string }) =>
+    request<Product>(`/api/products/${id}/merge`, { method: 'POST', body: JSON.stringify(body) }),
 
   addPack: (productId: string, body: NewPackInput) =>
     request<Pack>(`/api/products/${productId}/packs`, {
@@ -467,15 +513,16 @@ export const api = {
       `/api/barcodes/${encodeURIComponent(code)}`,
     ),
 
-  /** A till sale, by barcode, in packs. */
-  sell: (body: {
-    barcode: string;
-    qtyPacks: number;
-    branchId: string;
-    actorId: string;
-    overrideNegative?: boolean;
-    overrideBy?: string | null;
-  }) =>
+  /** A till sale, by barcode OR by a product+pack picked from the list. */
+  sell: (
+    body: {
+      qtyPacks: number;
+      branchId: string;
+      actorId: string;
+      overrideNegative?: boolean;
+      overrideBy?: string | null;
+    } & ({ barcode: string; productId?: undefined; packId?: undefined } | { barcode?: undefined; productId: string; packId: string }),
+  ) =>
     request<{ seq: number; eventId: string; replayed: boolean; qtyAfter: number }>('/api/sales', {
       method: 'POST',
       body: JSON.stringify(body),

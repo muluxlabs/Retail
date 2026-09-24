@@ -51,16 +51,25 @@ const movementBody = z.object({
   // alone, bypassing the same control /api/sales correctly enforces.
 });
 
-const sellBody = z.object({
-  eventId: z.uuid().optional(),
-  barcode: z.string().trim().min(1).max(32),
-  qtyPacks: z.number().positive(),
-  branchId: z.uuid(),
-  actorId: z.uuid(),
-  terminalId: z.uuid().nullable().default(null),
-  overrideNegative: z.boolean().default(false),
-  overrideBy: z.uuid().nullable().default(null),
-});
+const sellBody = z
+  .object({
+    eventId: z.uuid().optional(),
+    // Either a code (scanned or typed), or a product+pack picked straight
+    // from the searchable list - never both, never neither.
+    barcode: z.string().trim().min(1).max(32).optional(),
+    productId: z.uuid().optional(),
+    packId: z.uuid().optional(),
+    qtyPacks: z.number().positive(),
+    branchId: z.uuid(),
+    actorId: z.uuid(),
+    terminalId: z.uuid().nullable().default(null),
+    overrideNegative: z.boolean().default(false),
+    overrideBy: z.uuid().nullable().default(null),
+  })
+  .refine(
+    (v) => (v.barcode !== undefined) !== (v.productId !== undefined && v.packId !== undefined),
+    { message: 'Provide either a barcode, or a productId and packId - not both, not neither.' },
+  );
 
 const unlistedScanBody = z.object({
   code: z.string().trim().min(1).max(32),
@@ -107,7 +116,18 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
       });
     }
 
-    const result = await sell(app.db, body);
+    const result = await sell(app.db, {
+      ...(body.barcode !== undefined
+        ? { barcode: body.barcode }
+        : { productId: body.productId!, packId: body.packId! }),
+      qtyPacks: body.qtyPacks,
+      branchId: body.branchId,
+      actorId: body.actorId,
+      terminalId: body.terminalId,
+      overrideNegative: body.overrideNegative,
+      overrideBy: body.overrideBy,
+      ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
+    });
     return reply.status(result.replayed ? 200 : 201).send(result);
   });
 

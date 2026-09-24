@@ -38,7 +38,10 @@ export type ExceptionKind =
   | 'transit_loss'
   | 'cash_variance'
   | 'price_override'
-  | 'void_after_tender';
+  | 'void_after_tender'
+  | 'unreviewed_product';
+
+export type ProductReviewState = 'approved' | 'pending';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -108,6 +111,9 @@ export interface ProductTable {
   created_at: Timestamp;
   /** Set during master-data cleanse. Merged products keep history, reject movements. */
   merged_into_id: string | null;
+  /** 'pending' when created via quick-add at the till; a work item until reviewed. */
+  review_state: ColumnType<ProductReviewState, ProductReviewState | undefined, ProductReviewState>;
+  created_by: string | null;
 }
 
 export interface ProductPackTable {

@@ -29,10 +29,16 @@ export function Products() {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [pendingOnly, setPendingOnly] = useState(false);
 
   const products = useAsync(
-    () => api.products({ ...(search === '' ? {} : { search }), limit: 200 }),
-    [search],
+    () =>
+      api.products({
+        ...(search === '' ? {} : { search }),
+        ...(pendingOnly ? { reviewState: 'pending' as const } : {}),
+        limit: 200,
+      }),
+    [search, pendingOnly],
   );
   const categories = useAsync(() => api.categories(), []);
 
@@ -71,12 +77,27 @@ export function Products() {
         />
       )}
 
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by name or SKU…"
-        className="border-ink-200 focus:border-accent-500 w-full max-w-md rounded-lg border bg-white px-3 py-1.5 text-[12.5px] outline-none"
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or SKU…"
+          className="border-ink-200 focus:border-accent-500 w-full max-w-md rounded-lg border bg-white px-3 py-1.5 text-[12.5px] outline-none"
+        />
+        <label className="flex items-center gap-2 text-[12px]">
+          <input
+            type="checkbox"
+            checked={pendingOnly}
+            onChange={(e) => setPendingOnly(e.target.checked)}
+            className="accent-accent-600 size-3.5"
+          />
+          Pending review only
+        </label>
+      </div>
+      <p className="text-ink-400 -mt-2 text-[11.5px]">
+        Items a cashier added on the fly sit here too, flagged “pending review”, until a branch
+        manager maps or accepts them from the Exceptions queue.
+      </p>
 
       {products.error !== undefined && <ErrorNote error={products.error} />}
 
@@ -115,6 +136,9 @@ export function Products() {
                           <Badge tone="warn">no barcode</Badge>
                         )}
                         {product.mergedIntoId !== null && <Badge tone="neutral">merged</Badge>}
+                        {product.reviewState === 'pending' && (
+                          <Badge tone="warn">pending review</Badge>
+                        )}
                       </div>
                       <div className="text-ink-400 mt-0.5 font-mono text-[11px]">
                         {product.sku}
@@ -338,7 +362,7 @@ function CreateProductForm({
                   buy
                 </label>
                 <input
-                  placeholder="Barcode (optional)"
+                  placeholder="Scan or type barcode…"
                   value={pack.barcode}
                   onChange={(e) => updatePack(pack.key, { barcode: e.target.value })}
                   className="text-[12.5px] font-mono outline-none"
@@ -793,7 +817,7 @@ function PackRow({
             <span className="flex items-center gap-1">
               <input
                 autoFocus
-                placeholder="Barcode"
+                placeholder="Scan or type…"
                 value={newBarcode}
                 onChange={(e) => setNewBarcode(e.target.value)}
                 className="border-ink-200 w-28 rounded border px-1.5 py-0.5 font-mono text-[11px] outline-none"
@@ -882,7 +906,7 @@ function AddPackForm({
         className="tnum w-20 outline-none"
       />
       <input
-        placeholder="Barcode (optional)"
+        placeholder="Scan or type barcode…"
         value={barcode}
         onChange={(e) => setBarcode(e.target.value)}
         className="w-32 font-mono outline-none"
