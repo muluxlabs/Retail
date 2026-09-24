@@ -158,15 +158,15 @@ export function Count() {
               placeholder="Filter this list…"
               className="border-ink-200 focus:border-accent-500 min-w-56 flex-1 rounded-lg border bg-white px-3 py-1.5 text-[12.5px] outline-none"
             />
-            <div className="relative">
+            <div className="relative w-full sm:w-64">
               <input
                 value={addSearch}
                 onChange={(e) => setAddSearch(e.target.value)}
                 placeholder="+ Add a product not listed…"
-                className="border-ink-200 focus:border-accent-500 w-64 rounded-lg border bg-white px-3 py-1.5 text-[12.5px] outline-none"
+                className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-3 py-1.5 text-[12.5px] outline-none"
               />
               {addResults.data !== undefined && addResults.data.items.length > 0 && (
-                <ul className="border-ink-200 absolute right-0 top-full z-10 mt-1 w-80 divide-y divide-ink-100 overflow-hidden rounded-lg border bg-white shadow-lg">
+                <ul className="border-ink-200 absolute right-0 top-full z-10 mt-1 w-full divide-y divide-ink-100 overflow-hidden rounded-lg border bg-white shadow-lg">
                   {addResults.data.items.map((p) => (
                     <li key={p.id}>
                       <button
@@ -285,6 +285,7 @@ function ResultPanel({ result, onNewCount }: { result: CountResult; onNewCount: 
         {result.lines.length === 0 ? (
           <Empty title="No lines posted" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-[12.5px]">
             <thead>
               <tr className="border-ink-100 text-ink-400 border-b text-[10.5px] uppercase tracking-wider">
@@ -310,6 +311,7 @@ function ResultPanel({ result, onNewCount }: { result: CountResult; onNewCount: 
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 

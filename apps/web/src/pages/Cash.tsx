@@ -120,6 +120,7 @@ export function Cash() {
               ) : (positions.data?.items.length ?? 0) === 0 ? (
                 <Empty title="No custody points" />
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-[12.5px]">
                   <thead>
                     <tr className="border-ink-100 text-ink-400 border-b text-[10.5px] uppercase tracking-wider">
@@ -147,6 +148,7 @@ export function Cash() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </Card>
 

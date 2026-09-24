@@ -295,9 +295,9 @@ function DispatchForm({
                 return (
                   <div
                     key={line.key}
-                    className="border-ink-200 grid grid-cols-[1fr_140px_90px_auto_auto] items-center gap-2 rounded-lg border bg-white px-2.5 py-1.5"
+                    className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1fr_140px_90px_auto_auto] sm:gap-2"
                   >
-                    <div className="min-w-0 truncate text-[12.5px]">
+                    <div className="col-span-2 min-w-0 truncate text-[12.5px] sm:col-span-1">
                       <span className="font-medium">{line.productName}</span>
                       <span className="text-ink-400 ml-1.5 font-mono text-[11px]">{line.sku}</span>
                     </div>
@@ -477,6 +477,7 @@ function Detail({ id, onChanged }: { id: string; onChanged: () => void }) {
         )}
       </div>
 
+      <div className="overflow-x-auto">
       <table className="w-full text-[12.5px]">
         <thead>
           <tr className="border-ink-100 text-ink-400 border-b text-[10.5px] uppercase tracking-wider">
@@ -521,6 +522,7 @@ function Detail({ id, onChanged }: { id: string; onChanged: () => void }) {
           ))}
         </tbody>
       </table>
+      </div>
 
       {error !== null && (
         <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">

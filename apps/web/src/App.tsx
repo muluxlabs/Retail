@@ -1,4 +1,5 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useAuth } from './lib/auth.js';
 import { Spinner } from './lib/ui.js';
@@ -53,6 +54,14 @@ function canAny(can: (p: string) => boolean, permission: string | string[]): boo
 
 export function App() {
   const { user, loading, can } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Belt-and-braces: NavLink's onClick already closes it, but a browser
+  // back/forward navigation does not fire that handler.
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   if (loading) {
     return (
@@ -75,27 +84,33 @@ export function App() {
   return (
     <div className="flex h-full flex-col">
       <header className="border-ink-200/80 sticky top-0 z-20 border-b bg-white/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-6 px-5">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-3 px-4 sm:gap-6 sm:px-5">
           <div className="flex items-center gap-2.5">
-            <div className="bg-accent-600 grid size-7 place-items-center rounded-md">
+            <div className="bg-accent-600 grid size-7 shrink-0 place-items-center rounded-md">
               <svg viewBox="0 0 24 24" className="size-4 text-white" aria-hidden="true">
                 <path fill="currentColor" d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z" />
               </svg>
             </div>
             <div className="leading-none">
               <div className="text-[13px] font-semibold tracking-tight">Retail Operations</div>
-              <div className="text-ink-400 mt-0.5 text-[10.5px]">Multi-branch control</div>
+              <div className="text-ink-400 mt-0.5 hidden text-[10.5px] sm:block">
+                Multi-branch control
+              </div>
             </div>
           </div>
 
-          <nav className="flex items-center gap-0.5">
+          {/* Desktop nav. overflow-x-auto is a safety net, not the primary
+              design - a person with every permission (administrator) has
+              14 tabs, which does not reliably fit a laptop-width screen
+              even above the mobile breakpoint. */}
+          <nav className="hidden flex-nowrap items-center gap-0.5 overflow-x-auto lg:flex">
             {visible.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end ?? false}
                 className={({ isActive }) =>
-                  `rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition ${
+                  `shrink-0 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition ${
                     isActive
                       ? 'bg-ink-100 text-ink-900'
                       : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
@@ -107,13 +122,51 @@ export function App() {
             ))}
           </nav>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
             <UserMenu />
+            <button
+              onClick={() => setMobileNavOpen((v) => !v)}
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileNavOpen}
+              className="text-ink-500 hover:bg-ink-100 -mr-1 grid size-9 shrink-0 place-items-center rounded-lg lg:hidden"
+            >
+              <svg viewBox="0 0 20 20" className="size-5" aria-hidden="true">
+                {mobileNavOpen ? (
+                  <path
+                    fill="currentColor"
+                    d="M5.6 4.2 10 8.6l4.4-4.4 1.4 1.4L11.4 10l4.4 4.4-1.4 1.4L10 11.4l-4.4 4.4-1.4-1.4L8.6 10 4.2 5.6z"
+                  />
+                ) : (
+                  <path fill="currentColor" d="M3 5h14v1.6H3zm0 6.7h14v1.6H3z" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
+
+        {mobileNavOpen && (
+          <nav className="border-ink-200/80 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-t bg-white lg:hidden">
+            {visible.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end ?? false}
+                onClick={() => setMobileNavOpen(false)}
+                className={({ isActive }) =>
+                  `border-ink-100 block border-b px-5 py-3 text-[13.5px] font-medium ${
+                    isActive ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+            <MobileSignOut />
+          </nav>
+        )}
       </header>
 
-      <main className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-6">
+      <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-5 sm:px-5 sm:py-6">
         <Routes>
           <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
@@ -176,15 +229,31 @@ function UserMenu() {
           {user.roles.map((r) => r.replace(/_/g, ' ')).join(', ')}
         </div>
       </div>
-      <div className="bg-ink-200 text-ink-700 grid size-7 place-items-center rounded-full text-[10.5px] font-semibold">
+      <div className="bg-ink-200 text-ink-700 grid size-7 shrink-0 place-items-center rounded-full text-[10.5px] font-semibold">
         {initials}
       </div>
+      {/* Below lg, this lives in the mobile nav panel instead (MobileSignOut) -
+          there is not room for it here alongside the hamburger button too. */}
       <button
         onClick={() => void signOut()}
-        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 rounded-lg px-2 py-1.5 text-[12px] font-medium transition"
+        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 hidden rounded-lg px-2 py-1.5 text-[12px] font-medium transition lg:inline-flex"
       >
         Sign out
       </button>
     </div>
+  );
+}
+
+function MobileSignOut() {
+  const { user, signOut } = useAuth();
+  if (user === null) return null;
+
+  return (
+    <button
+      onClick={() => void signOut()}
+      className="text-ink-600 block w-full px-5 py-3 text-left text-[13.5px] font-medium"
+    >
+      Sign out
+    </button>
   );
 }

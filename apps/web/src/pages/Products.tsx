@@ -324,14 +324,14 @@ function CreateProductForm({
             {packs.map((pack) => (
               <div
                 key={pack.key}
-                className="border-ink-200 grid grid-cols-[1fr_100px_auto_auto_1fr_auto] items-center gap-2 rounded-lg border bg-white px-2.5 py-1.5"
+                className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1fr_100px_auto_auto_1fr_auto] sm:gap-2"
               >
                 <input
                   required
                   placeholder="Label, e.g. case of 10"
                   value={pack.label}
                   onChange={(e) => updatePack(pack.key, { label: e.target.value })}
-                  className="text-[12.5px] outline-none"
+                  className="col-span-2 text-[12.5px] outline-none sm:col-span-1"
                 />
                 <input
                   required

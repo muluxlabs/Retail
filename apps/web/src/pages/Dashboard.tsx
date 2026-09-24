@@ -92,6 +92,7 @@ export function Dashboard() {
               <Spinner />
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="border-ink-100 text-ink-400 border-b text-[10.5px] uppercase tracking-wider">
@@ -120,6 +121,7 @@ export function Dashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
 

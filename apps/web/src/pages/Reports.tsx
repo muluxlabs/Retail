@@ -233,7 +233,7 @@ export function Reports() {
               )}
             </Field>
             {product === null && productSearch.trim() !== '' && (
-              <div className="border-ink-100 absolute z-10 mt-1 max-h-52 w-64 divide-y overflow-y-auto rounded-lg border bg-white shadow-lg">
+              <div className="border-ink-100 absolute left-0 z-10 mt-1 max-h-52 w-[min(16rem,calc(100vw-2rem))] divide-y overflow-y-auto rounded-lg border bg-white shadow-lg">
                 {(productResults.data?.items ?? []).length === 0 ? (
                   <p className="text-ink-400 px-3 py-2 text-[12px]">No match.</p>
                 ) : (
@@ -390,18 +390,26 @@ export function Reports() {
             ) : (
               <ul className="divide-ink-100 divide-y">
                 {report.data.byProduct.map((p) => (
-                  <li key={p.productId} className="flex items-center gap-3 px-4 py-2 text-[12.5px]">
+                  <li
+                    key={p.productId}
+                    className="flex flex-col gap-1 px-4 py-2.5 text-[12.5px] sm:flex-row sm:items-center sm:gap-3 sm:py-2"
+                  >
                     <span className="min-w-0 flex-1 truncate font-medium">{p.productName}</span>
-                    <span className="text-ink-400 w-20 shrink-0 font-mono text-[11px]">{p.sku}</span>
-                    <span className="tnum w-20 shrink-0 text-right text-red-600">
-                      -{qty(p.unitsSold)}
-                    </span>
-                    <span className="tnum w-20 shrink-0 text-right text-accent-700">
-                      +{qty(p.unitsReceived)}
-                    </span>
-                    <span className="text-ink-500 tnum w-24 shrink-0 text-right">
-                      {money(p.costReceived)}
-                    </span>
+                    {/* sm:contents drops this wrapper from the box model at sm+, so its
+                        children fall back into a single dense row exactly like before -
+                        below sm, it stays a normal flex row of its own underneath the name. */}
+                    <div className="text-ink-400 flex items-center justify-between gap-3 font-mono text-[11px] sm:contents">
+                      <span className="sm:w-20 sm:shrink-0 sm:text-right">{p.sku}</span>
+                      <span className="tnum sm:w-20 sm:shrink-0 sm:text-right sm:text-[12.5px] text-red-600">
+                        -{qty(p.unitsSold)}
+                      </span>
+                      <span className="tnum sm:w-20 sm:shrink-0 sm:text-right sm:text-[12.5px] text-accent-700">
+                        +{qty(p.unitsReceived)}
+                      </span>
+                      <span className="text-ink-500 tnum sm:w-24 sm:shrink-0 sm:text-right sm:text-[12.5px]">
+                        {money(p.costReceived)}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
