@@ -172,7 +172,8 @@ export type ExceptionKind =
   | 'transit_loss'
   | 'cash_variance'
   | 'price_override'
-  | 'void_after_tender';
+  | 'void_after_tender'
+  | 'unreviewed_product';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
