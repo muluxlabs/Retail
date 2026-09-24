@@ -356,7 +356,9 @@ export interface SystemSettingTable {
   key: string;
   value: string;
   updated_by: string | null;
-  updated_at: Timestamp;
+  // Unlike created_at elsewhere, this column is meant to be written again -
+  // the whole point of this table is that a setting changes after insert.
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 /** Applied-migration log. Owned by the runner, not by 001_core.sql. */

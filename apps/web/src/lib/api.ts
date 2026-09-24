@@ -311,6 +311,15 @@ export interface TransferDetail {
   lines: TransferLine[];
 }
 
+export interface SettingRow {
+  key: string;
+  value: string;
+  label: string;
+  description: string | null;
+  updatedAt: string | null;
+  updatedByName: string | null;
+}
+
 export interface UserRow {
   id: string;
   fullName: string;
@@ -639,5 +648,13 @@ export const api = {
     request<ExceptionRow>(`/api/exceptions/${id}/state`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  settings: () => request<SettingRow[]>('/api/settings'),
+
+  updateSetting: (key: string, value: string) =>
+    request<SettingRow>(`/api/settings/${encodeURIComponent(key)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
     }),
 };

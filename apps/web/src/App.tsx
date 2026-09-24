@@ -12,6 +12,7 @@ import { ChangePassword, Login } from './pages/Login.js';
 import { Products } from './pages/Products.js';
 import { Receive } from './pages/Receive.js';
 import { Sell } from './pages/Sell.js';
+import { Settings } from './pages/Settings.js';
 import { Stock } from './pages/Stock.js';
 import { Transfers } from './pages/Transfers.js';
 import { Users } from './pages/Users.js';
@@ -41,6 +42,7 @@ const NAV = [
   { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
   { to: '/branches', label: 'Branches', permission: 'branch.manage' },
+  { to: '/settings', label: 'Settings', permission: 'settings.manage' },
 ];
 
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
@@ -130,6 +132,7 @@ export function App() {
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
           <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
           <Route path="/branches" element={<Guard permission="branch.manage" home={home}><Branches /></Guard>} />
+          <Route path="/settings" element={<Guard permission="settings.manage" home={home}><Settings /></Guard>} />
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>
