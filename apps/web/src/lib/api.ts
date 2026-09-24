@@ -311,6 +311,32 @@ export interface TransferDetail {
   lines: TransferLine[];
 }
 
+export interface ReportBucket {
+  bucket: string;
+  unitsSold: number;
+  unitsReceived: number;
+  costReceived: number;
+  unitsTransferredOut: number;
+  unitsTransferredIn: number;
+  unitsWrittenOff: number;
+  unitsAdjustedNet: number;
+}
+
+export interface ReportProductRow extends ReportBucket {
+  productId: string;
+  sku: string;
+  productName: string;
+}
+
+export interface MovementReport {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week' | 'month' | 'year';
+  summary: Omit<ReportBucket, 'bucket'>;
+  buckets: ReportBucket[];
+  byProduct: ReportProductRow[];
+}
+
 export interface SettingRow {
   key: string;
   value: string;
@@ -649,6 +675,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  reportMovements: (params: {
+    from: string;
+    to: string;
+    groupBy: 'day' | 'week' | 'month' | 'year';
+    branchId?: string;
+    categoryId?: string;
+    productId?: string;
+  }) => request<MovementReport>(`/api/reports/movements${qs(params)}`),
 
   settings: () => request<SettingRow[]>('/api/settings'),
 

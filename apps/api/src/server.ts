@@ -23,6 +23,7 @@ import { registerCashRoutes } from './routes/cash.js';
 import { registerTransferRoutes } from './routes/transfers.js';
 import { registerProductRoutes } from './routes/products.js';
 import { registerReferenceRoutes } from './routes/reference.js';
+import { registerReportRoutes } from './routes/reports.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerStockRoutes } from './routes/stock.js';
 
@@ -79,6 +80,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       await api.register(registerCashRoutes);
       await api.register(registerDashboardRoutes);
       await api.register(registerSettingsRoutes);
+      await api.register(registerReportRoutes);
     },
     { prefix: '/api' },
   );

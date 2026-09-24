@@ -11,6 +11,7 @@ import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { Products } from './pages/Products.js';
 import { Receive } from './pages/Receive.js';
+import { Reports } from './pages/Reports.js';
 import { Sell } from './pages/Sell.js';
 import { Settings } from './pages/Settings.js';
 import { Stock } from './pages/Stock.js';
@@ -38,6 +39,7 @@ const NAV = [
   { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move'] },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock', permission: 'stock.read' },
+  { to: '/reports', label: 'Reports', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
   { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
@@ -128,6 +130,7 @@ export function App() {
           />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
+          <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
           <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
