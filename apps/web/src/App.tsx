@@ -85,32 +85,32 @@ export function App() {
     <div className="flex h-full flex-col">
       <header className="border-ink-200/80 sticky top-0 z-20 border-b bg-white/85 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-3 px-4 sm:gap-6 sm:px-5">
-          <div className="flex items-center gap-2.5">
+          <div className="flex shrink-0 items-center gap-2.5">
             <div className="bg-accent-600 grid size-7 shrink-0 place-items-center rounded-md">
               <svg viewBox="0 0 24 24" className="size-4 text-white" aria-hidden="true">
                 <path fill="currentColor" d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z" />
               </svg>
             </div>
             <div className="leading-none">
-              <div className="text-[13px] font-semibold tracking-tight">Retail Operations</div>
-              <div className="text-ink-400 mt-0.5 hidden text-[10.5px] sm:block">
+              <div className="text-[13px] font-semibold tracking-tight whitespace-nowrap">Retail Operations</div>
+              <div className="text-ink-400 mt-0.5 hidden text-[10.5px] whitespace-nowrap 2xl:block">
                 Multi-branch control
               </div>
             </div>
           </div>
 
-          {/* Desktop nav. overflow-x-auto is a safety net, not the primary
-              design - a person with every permission (administrator) has
-              14 tabs, which does not reliably fit a laptop-width screen
-              even above the mobile breakpoint. */}
-          <nav className="hidden flex-nowrap items-center gap-0.5 overflow-x-auto lg:flex">
+          {/* Full horizontal nav from xl (1280px) up. An administrator has 14
+              tabs (~880px of them), and at 1024px the whole header needs about
+              1350px - so below xl they live in the menu instead, rather than
+              being clipped mid-word. overflow-x-auto stays as a last resort. */}
+          <nav className="hidden min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto xl:flex">
             {visible.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end ?? false}
                 className={({ isActive }) =>
-                  `shrink-0 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition ${
+                  `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition 2xl:px-2.5 ${
                     isActive
                       ? 'bg-ink-100 text-ink-900'
                       : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
@@ -128,7 +128,7 @@ export function App() {
               onClick={() => setMobileNavOpen((v) => !v)}
               aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileNavOpen}
-              className="text-ink-500 hover:bg-ink-100 -mr-1 grid size-9 shrink-0 place-items-center rounded-lg lg:hidden"
+              className="text-ink-500 hover:bg-ink-100 -mr-1 grid size-9 shrink-0 place-items-center rounded-lg xl:hidden"
             >
               <svg viewBox="0 0 20 20" className="size-5" aria-hidden="true">
                 {mobileNavOpen ? (
@@ -145,7 +145,7 @@ export function App() {
         </div>
 
         {mobileNavOpen && (
-          <nav className="border-ink-200/80 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-t bg-white lg:hidden">
+          <nav className="border-ink-200/80 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-t bg-white xl:hidden">
             {visible.map((item) => (
               <NavLink
                 key={item.to}
@@ -223,7 +223,7 @@ function UserMenu() {
 
   return (
     <div className="flex items-center gap-2.5">
-      <div className="hidden text-right sm:block">
+      <div className="hidden text-right whitespace-nowrap sm:block xl:hidden 2xl:block">
         <div className="text-[12px] font-medium leading-tight">{user.fullName}</div>
         <div className="text-ink-400 text-[10.5px] leading-tight">
           {user.roles.map((r) => r.replace(/_/g, ' ')).join(', ')}
@@ -232,11 +232,11 @@ function UserMenu() {
       <div className="bg-ink-200 text-ink-700 grid size-7 shrink-0 place-items-center rounded-full text-[10.5px] font-semibold">
         {initials}
       </div>
-      {/* Below lg, this lives in the mobile nav panel instead (MobileSignOut) -
+      {/* Below xl, this lives in the mobile nav panel instead (MobileSignOut) -
           there is not room for it here alongside the hamburger button too. */}
       <button
         onClick={() => void signOut()}
-        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 hidden rounded-lg px-2 py-1.5 text-[12px] font-medium transition lg:inline-flex"
+        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 hidden rounded-lg px-2 py-1.5 text-[12px] font-medium whitespace-nowrap transition xl:inline-flex"
       >
         Sign out
       </button>

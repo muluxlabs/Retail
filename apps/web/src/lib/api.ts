@@ -231,6 +231,10 @@ export interface Dashboard {
   controls: { backdatedMovements: number; negativeStockLines: number };
   master: { products: number; withoutPack: number; withoutBarcode: number; merged: number };
   activity: { day: string; unitsSold: number; unitsReceived: number }[];
+  /** The last 30 days against the 30 before them. */
+  trading: { soldNow: number; soldBefore: number; receivedNow: number; receivedBefore: number };
+  topProducts: { productId: string; productName: string; sku: string; unitsSold: number }[];
+  inventoryByCategory: { categoryName: string; value: number }[];
 }
 
 export interface CurrentUser {
@@ -311,8 +315,8 @@ export interface TransferDetail {
   lines: TransferLine[];
 }
 
-export interface ReportBucket {
-  bucket: string;
+/** The seven figures every report cut carries, however it is grouped. */
+export interface ReportFigures {
   unitsSold: number;
   unitsReceived: number;
   costReceived: number;
@@ -322,7 +326,11 @@ export interface ReportBucket {
   unitsAdjustedNet: number;
 }
 
-export interface ReportProductRow extends ReportBucket {
+export interface ReportBucket extends ReportFigures {
+  bucket: string;
+}
+
+export interface ReportProductRow extends ReportFigures {
   productId: string;
   sku: string;
   productName: string;
@@ -332,9 +340,15 @@ export interface MovementReport {
   from: string;
   to: string;
   groupBy: 'day' | 'week' | 'month' | 'year';
-  summary: Omit<ReportBucket, 'bucket'>;
+  summary: ReportFigures;
   buckets: ReportBucket[];
   byProduct: ReportProductRow[];
+  /** Ranked by units sold, unlike byProduct, which is ranked by total activity. */
+  topSellers: ReportProductRow[];
+  byBranch: (ReportFigures & { branchId: string; branchName: string })[];
+  byCategory: (ReportFigures & { categoryName: string })[];
+  /** ISO weekday: 1 = Monday .. 7 = Sunday. Only weekdays with activity appear. */
+  byWeekday: (ReportFigures & { weekday: number })[];
 }
 
 export interface SettingRow {

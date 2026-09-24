@@ -87,7 +87,10 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
 
     const bucketExpr = GROUP_BY_EXPR[q.groupBy];
 
-    const [summary, buckets, byProduct] = await Promise.all([
+    // ISO weekday, 1 = Monday .. 7 = Sunday.
+    const weekdayExpr = sql<number>`extract(isodow from occurred_at)::int`;
+
+    const [summary, buckets, byProduct, byBranch, byCategory, byWeekday, topSellers] = await Promise.all([
       base.select(aggregates()).executeTakeFirst(),
 
       base
@@ -108,6 +111,45 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
         .orderBy(sql`sum(abs(qty_base))`, 'desc')
         .limit(q.productId !== undefined ? 1 : 100)
         .execute(),
+
+      // The same seven figures again, cut three more ways. Same filters as
+      // everything above, so each cut sums back to the summary - the charts
+      // built on them can never disagree with the headline numbers.
+      base
+        .innerJoin('branch', 'branch.id', 'stock_movement.branch_id')
+        .select(['branch.id as branchId', 'branch.name as branchName', ...aggregates()])
+        .groupBy(['branch.id', 'branch.name'])
+        .orderBy(sql`sum(abs(qty_base))`, 'desc')
+        .execute(),
+
+      base
+        .innerJoin('product', 'product.id', 'stock_movement.product_id')
+        .leftJoin('product_category', 'product_category.id', 'product.category_id')
+        .select([
+          sql<string>`coalesce(product_category.name, 'Uncategorised')`.as('categoryName'),
+          ...aggregates(),
+        ])
+        .groupBy(sql`coalesce(product_category.name, 'Uncategorised')`)
+        .orderBy(sql`sum(abs(qty_base))`, 'desc')
+        .execute(),
+
+      base
+        .select([weekdayExpr.as('weekday'), ...aggregates()])
+        .groupBy(weekdayExpr)
+        .orderBy(weekdayExpr, 'asc')
+        .execute(),
+
+      // Ranked by what was SOLD. `byProduct` above is ranked by total
+      // activity (sold, received and adjusted together) and capped at 100, so
+      // it cannot be trusted to contain the true top sellers.
+      base
+        .innerJoin('product', 'product.id', 'stock_movement.product_id')
+        .select(['product.id as productId', 'product.sku as sku', 'product.name as productName', ...aggregates()])
+        .groupBy(['product.id', 'product.sku', 'product.name'])
+        .having(sql<boolean>`sum(-qty_base) filter (where reason in ('sale', 'sale_refund')) > 0`)
+        .orderBy(sql`sum(-qty_base) filter (where reason in ('sale', 'sale_refund'))`, 'desc')
+        .limit(10)
+        .execute(),
     ]);
 
     return {
@@ -125,6 +167,10 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       },
       buckets,
       byProduct,
+      topSellers,
+      byBranch,
+      byCategory,
+      byWeekday,
     };
   });
 }

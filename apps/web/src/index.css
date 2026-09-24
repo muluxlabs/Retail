@@ -70,3 +70,32 @@
     scrollbar-color: var(--color-ink-300) transparent;
   }
 }
+
+/*
+ * Chart tokens. Every colour a chart uses is declared here, once, and the
+ * chart components reference these by role - never a raw hex in a component.
+ *
+ * Colour follows the entity, not the row: "sold" is always blue and
+ * "received" is always teal, on every screen, whatever else is on it.
+ * The pair was run through the palette validator against the white card
+ * surface (worst adjacent CVD delta-E 9.9 on the weakest axis, normal
+ * vision 16.4, both 3:1+ against the surface). The darker teal that looks
+ * more "on brand" (#007d7e) FAILS the chroma floor and reads as gray, which
+ * is why the chart teal is the lighter accent-500.
+ *
+ * Neutral is for a measure that is neither of those - money held in stock,
+ * for one. Amber and red stay reserved for open work items and negative
+ * stock, as everywhere else in this app; a chart never borrows them to
+ * mean "series".
+ */
+:root {
+  --viz-sold: #256abf;
+  --viz-received: #009a9b;
+  --viz-neutral: #6d7179;
+  --viz-surface: #ffffff;
+  --viz-grid: #f3f4f6;
+  --viz-axis: #e4e6ea;
+  --viz-quiet: #cfd2d6;
+  --viz-text: #6d7179;
+  --viz-good-text: #006300;
+}

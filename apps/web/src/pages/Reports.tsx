@@ -17,7 +17,24 @@
 import { useMemo, useState } from 'react';
 
 import { api, type MovementReport, type Product } from '../lib/api.js';
-import { Button, Card, ErrorNote, Spinner, money, qty, useAsync } from '../lib/ui.js';
+import {
+  BarList,
+  ChartCard,
+  Delta,
+  KpiTile,
+  MiniTable,
+  SeriesChart,
+  VIZ,
+} from '../lib/charts.js';
+import {
+  WEEKDAY_NAMES,
+  WEEKDAY_SHORT,
+  bucketHeading,
+  fillBuckets,
+  bucketLabel,
+  pctChange,
+} from '../lib/chartMath.js';
+import { Button, Card, Empty, ErrorNote, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
 type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
 type GroupBy = MovementReport['groupBy'];
@@ -69,6 +86,41 @@ const PRESETS: { value: Preset; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
+/**
+ * The stretch of time of the same length immediately before [from, to], for
+ * "vs the previous period". Null for a range too long to be worth comparing.
+ * Done in UTC calendar days so a viewer's time zone cannot move a boundary.
+ */
+function previousRange(from: string, to: string): { from: string; to: string; days: number } | null {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  if (fy === undefined || fm === undefined || fd === undefined) return null;
+  if (ty === undefined || tm === undefined || td === undefined) return null;
+  const DAY = 86_400_000;
+  const a = Date.UTC(fy, fm - 1, fd);
+  const b = Date.UTC(ty, tm - 1, td);
+  const days = Math.round((b - a) / DAY) + 1;
+  if (!(days >= 1 && days <= 400)) return null;
+  const prevTo = a - DAY;
+  const prevFrom = prevTo - (days - 1) * DAY;
+  return {
+    from: new Date(prevFrom).toISOString().slice(0, 10),
+    to: new Date(prevTo).toISOString().slice(0, 10),
+    days,
+  };
+}
+
+/** "27%" - one decimal under 10%, none above, so small shares are not rounded to nothing. */
+const share = (part: number, whole: number): string =>
+  whole > 0 ? `${((part / whole) * 100).toFixed(part / whole < 0.1 ? 1 : 0)}%` : '—';
+
+/** The biggest few, and everything else folded into one honest "Other". */
+function foldTail(rows: { key: string; label: string; value: number }[], keep: number) {
+  if (rows.length <= keep + 1) return rows;
+  const rest = rows.slice(keep).reduce((sum, r) => sum + r.value, 0);
+  return [...rows.slice(0, keep), { key: '__other', label: `Other (${rows.length - keep})`, value: rest }];
+}
+
 export function Reports() {
   const [preset, setPreset] = useState<Preset>('month');
   const initial = presetRange('month');
@@ -103,6 +155,25 @@ export function Reports() {
     [from, to, groupBy, branchId, categoryId, product],
   );
 
+  // The same slice over the period just before, so a tile can say whether a
+  // number is moving. Grouped by year purely to keep that response small - only
+  // its summary is read.
+  const prevRange = useMemo(() => previousRange(from, to), [from, to]);
+  const previous = useAsync(
+    () =>
+      prevRange === null
+        ? Promise.resolve(null)
+        : api.reportMovements({
+            from: prevRange.from,
+            to: prevRange.to,
+            groupBy: 'year',
+            ...(branchId === '' ? {} : { branchId }),
+            ...(categoryId === '' ? {} : { categoryId }),
+            ...(product === null ? {} : { productId: product.id }),
+          }),
+    [prevRange?.from, prevRange?.to, branchId, categoryId, product],
+  );
+
   function applyPreset(p: Preset) {
     setPreset(p);
     if (p === 'custom') return;
@@ -128,12 +199,12 @@ export function Reports() {
 
       <Card className="px-4 py-3.5">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {PRESETS.map((p) => (
               <button
                 key={p.value}
                 onClick={() => applyPreset(p.value)}
-                className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition ${
+                className={`rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition sm:px-2.5 ${
                   preset === p.value
                     ? 'bg-ink-900 text-white'
                     : 'text-ink-500 hover:bg-ink-100 hover:text-ink-800 bg-white'
@@ -259,175 +330,378 @@ export function Reports() {
 
       {report.error !== undefined && <ErrorNote error={report.error} />}
 
-      {report.loading ? (
-        <div className="grid place-items-center py-16">
-          <Spinner />
-        </div>
-      ) : report.data === undefined ? null : (
-        <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryCard label="Units sold" value={qty(report.data.summary.unitsSold)} />
-            <SummaryCard
-              label="Received"
-              value={qty(report.data.summary.unitsReceived)}
-              sub={money(report.data.summary.costReceived)}
-            />
-            <SummaryCard
-              label="Transferred"
-              value={`${qty(report.data.summary.unitsTransferredIn)} in`}
-              sub={`${qty(report.data.summary.unitsTransferredOut)} out`}
-            />
-            <SummaryCard
-              label="Written off / adjusted"
-              value={qty(report.data.summary.unitsWrittenOff)}
-              sub={`${report.data.summary.unitsAdjustedNet >= 0 ? '+' : ''}${qty(report.data.summary.unitsAdjustedNet)} net count adj.`}
-            />
+      {report.data === undefined ? (
+        report.loading ? (
+          <div className="grid place-items-center py-16">
+            <Spinner />
           </div>
-
-          <Card className="overflow-hidden">
-            <div className="border-ink-100 flex items-center justify-between border-b px-4 py-2.5">
-              <h2 className="text-[13px] font-semibold tracking-tight">
-                By {report.data.groupBy} · {branchLabel}
-              </h2>
-              <Button
-                onClick={() =>
-                  downloadCsv(
-                    `report_${exportLabel}.csv`,
-                    [
-                      report.data!.groupBy,
-                      'units sold',
-                      'units received',
-                      'cost received',
-                      'transferred out',
-                      'transferred in',
-                      'written off',
-                      'adjusted (net)',
-                    ],
-                    report.data!.buckets.map((b) => [
-                      b.bucket,
-                      b.unitsSold,
-                      b.unitsReceived,
-                      b.costReceived,
-                      b.unitsTransferredOut,
-                      b.unitsTransferredIn,
-                      b.unitsWrittenOff,
-                      b.unitsAdjustedNet,
-                    ]),
-                  )
-                }
-                disabled={report.data.buckets.length === 0}
-              >
-                Download CSV
-              </Button>
-            </div>
-            {report.data.buckets.length === 0 ? (
-              <p className="text-ink-400 px-4 py-6 text-center text-[12px]">
-                No activity in this period.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[12.5px]">
-                  <thead>
-                    <tr className="text-ink-400 border-ink-100 border-b text-[10.5px] font-medium uppercase tracking-wider">
-                      <th className="px-4 py-2 text-left">{report.data.groupBy}</th>
-                      <th className="px-3 py-2 text-right">Sold</th>
-                      <th className="px-3 py-2 text-right">Received</th>
-                      <th className="px-3 py-2 text-right">Cost received</th>
-                      <th className="px-3 py-2 text-right">Transfers</th>
-                      <th className="px-3 py-2 text-right">Written off</th>
-                      <th className="px-4 py-2 text-right">Adjusted</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-ink-100 divide-y">
-                    {report.data.buckets.map((b) => (
-                      <tr key={b.bucket}>
-                        <td className="px-4 py-1.5 font-medium">{b.bucket}</td>
-                        <td className="tnum px-3 py-1.5 text-right">{qty(b.unitsSold)}</td>
-                        <td className="tnum px-3 py-1.5 text-right">{qty(b.unitsReceived)}</td>
-                        <td className="tnum px-3 py-1.5 text-right">{money(b.costReceived)}</td>
-                        <td className="tnum text-ink-500 px-3 py-1.5 text-right">
-                          {qty(b.unitsTransferredIn)} in / {qty(b.unitsTransferredOut)} out
-                        </td>
-                        <td className="tnum px-3 py-1.5 text-right">{qty(b.unitsWrittenOff)}</td>
-                        <td className="tnum px-4 py-1.5 text-right">{qty(b.unitsAdjustedNet)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
-          <Card className="overflow-hidden">
-            <div className="border-ink-100 flex items-center justify-between border-b px-4 py-2.5">
-              <h2 className="text-[13px] font-semibold tracking-tight">
-                {product !== null ? 'This product' : 'Most active products'}
-              </h2>
-              <Button
-                onClick={() =>
-                  downloadCsv(
-                    `report_by_product_${exportLabel}.csv`,
-                    ['SKU', 'Product', 'units sold', 'units received', 'cost received', 'written off'],
-                    report.data!.byProduct.map((p) => [
-                      p.sku,
-                      p.productName,
-                      p.unitsSold,
-                      p.unitsReceived,
-                      p.costReceived,
-                      p.unitsWrittenOff,
-                    ]),
-                  )
-                }
-                disabled={report.data.byProduct.length === 0}
-              >
-                Download CSV
-              </Button>
-            </div>
-            {report.data.byProduct.length === 0 ? (
-              <p className="text-ink-400 px-4 py-6 text-center text-[12px]">
-                No product activity in this period.
-              </p>
-            ) : (
-              <ul className="divide-ink-100 divide-y">
-                {report.data.byProduct.map((p) => (
-                  <li
-                    key={p.productId}
-                    className="flex flex-col gap-1 px-4 py-2.5 text-[12.5px] sm:flex-row sm:items-center sm:gap-3 sm:py-2"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-medium">{p.productName}</span>
-                    {/* sm:contents drops this wrapper from the box model at sm+, so its
-                        children fall back into a single dense row exactly like before -
-                        below sm, it stays a normal flex row of its own underneath the name. */}
-                    <div className="text-ink-400 flex items-center justify-between gap-3 font-mono text-[11px] sm:contents">
-                      <span className="sm:w-20 sm:shrink-0 sm:text-right">{p.sku}</span>
-                      <span className="tnum sm:w-20 sm:shrink-0 sm:text-right sm:text-[12.5px] text-red-600">
-                        -{qty(p.unitsSold)}
-                      </span>
-                      <span className="tnum sm:w-20 sm:shrink-0 sm:text-right sm:text-[12.5px] text-accent-700">
-                        +{qty(p.unitsReceived)}
-                      </span>
-                      <span className="text-ink-500 tnum sm:w-24 sm:shrink-0 sm:text-right sm:text-[12.5px]">
-                        {money(p.costReceived)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </>
+        ) : null
+      ) : (
+        <ReportBody
+          data={report.data}
+          previous={previous.data ?? null}
+          prevDays={prevRange?.days ?? 0}
+          loading={report.loading}
+          branchLabel={branchLabel}
+          exportLabel={exportLabel}
+          singleProduct={product !== null}
+        />
       )}
     </div>
   );
 }
 
-function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function ReportBody({
+  data,
+  previous,
+  prevDays,
+  loading,
+  branchLabel,
+  exportLabel,
+  singleProduct,
+}: {
+  data: MovementReport;
+  previous: MovementReport | null;
+  prevDays: number;
+  loading: boolean;
+  branchLabel: string;
+  exportLabel: string;
+  singleProduct: boolean;
+}) {
+  const s = data.summary;
+  const kind = data.groupBy;
+  // The API omits periods with no movements; the chart, sparklines and table
+  // need them back as zeros or the line bridges the gaps.
+  const buckets = fillBuckets(data.buckets, data.from, data.to, kind, (bucket) => ({
+    bucket,
+    unitsSold: 0,
+    unitsReceived: 0,
+    costReceived: 0,
+    unitsTransferredOut: 0,
+    unitsTransferredIn: 0,
+    unitsWrittenOff: 0,
+    unitsAdjustedNet: 0,
+  }));
+  const versus = prevDays === 1 ? 'than the day before' : `than the ${prevDays} days before`;
+
+  const net =
+    s.unitsReceived +
+    s.unitsTransferredIn -
+    s.unitsTransferredOut -
+    s.unitsSold -
+    s.unitsWrittenOff +
+    s.unitsAdjustedNet;
+
+  // -- the cuts, each ranked and trimmed for its chart ---------------------------
+  const topSold = data.topSellers.map((p) => ({
+    key: p.productId,
+    label: p.productName,
+    hint: p.sku,
+    value: p.unitsSold,
+  }));
+
+  const soldOnly = <T extends { unitsSold: number }>(rows: T[]) =>
+    rows.filter((r) => r.unitsSold > 0).sort((x, y) => y.unitsSold - x.unitsSold);
+
+  const branchRows = soldOnly(data.byBranch).map((b) => ({
+    key: b.branchId,
+    label: b.branchName,
+    value: b.unitsSold,
+  }));
+  const categoryRows = foldTail(
+    soldOnly(data.byCategory).map((c) => ({ key: c.categoryName, label: c.categoryName, value: c.unitsSold })),
+    7,
+  );
+
+  // Monday..Sunday, always seven columns: a weekday with no sales is a real
+  // zero, not a gap the reader has to notice is missing.
+  const weekdays = WEEKDAY_NAMES.map((name, i) => {
+    const row = data.byWeekday.find((w) => w.weekday === i + 1);
+    return {
+      name,
+      short: WEEKDAY_SHORT[i] ?? name,
+      sold: row?.unitsSold ?? 0,
+      received: row?.unitsReceived ?? 0,
+    };
+  });
+  const weekdaysWithSales = weekdays.filter((w) => w.sold > 0);
+  const busiest = weekdays.reduce((best, w) => (w.sold > best.sold ? w : best), weekdays[0]!);
+
+  const top5 = topSold.slice(0, 5).reduce((sum, r) => sum + r.value, 0);
+  const leader = branchRows[0];
+  const bestSeller = topSold[0];
+
   return (
-    <Card className="px-4 py-3.5">
-      <div className="text-ink-400 text-[10.5px] font-medium uppercase tracking-wider">{label}</div>
-      <div className="tnum mt-1 text-[20px] font-semibold tracking-tight">{value}</div>
-      {sub !== undefined && <div className="text-ink-400 mt-0.5 text-[11.5px]">{sub}</div>}
-    </Card>
+    <div className="space-y-4">
+      <div className={`grid grid-cols-2 gap-3 transition-opacity lg:grid-cols-4 ${loading ? 'opacity-50' : ''}`}>
+        <KpiTile
+          label="Units sold"
+          value={qty(s.unitsSold)}
+          spark={{ values: buckets.map((b) => b.unitsSold), color: VIZ.sold }}
+          delta={
+            previous === null ? undefined : (
+              <Delta pct={pctChange(s.unitsSold, previous.summary.unitsSold)} upIsGood={true} versus={versus} />
+            )
+          }
+        />
+        <KpiTile
+          label="Units received"
+          value={qty(s.unitsReceived)}
+          spark={{ values: buckets.map((b) => b.unitsReceived), color: VIZ.received }}
+          delta={
+            previous === null ? undefined : (
+              <Delta
+                pct={pctChange(s.unitsReceived, previous.summary.unitsReceived)}
+                upIsGood={null}
+                versus={versus}
+              />
+            )
+          }
+        />
+        <KpiTile
+          label="Cost received"
+          value={money(s.costReceived)}
+          spark={{ values: buckets.map((b) => b.costReceived), color: VIZ.received }}
+          delta={
+            previous === null ? undefined : (
+              <Delta
+                pct={pctChange(s.costReceived, previous.summary.costReceived)}
+                upIsGood={null}
+                versus={versus}
+              />
+            )
+          }
+        />
+        <KpiTile
+          label="Net stock change"
+          value={`${net > 0 ? '+' : ''}${qty(net)}`}
+          sub="Received − sold − written off, ± transfers and counts"
+        />
+      </div>
+
+      <ChartCard
+        title="Sold and received over time"
+        subtitle={`By ${kind} · ${branchLabel}`}
+        loading={loading}
+        empty={data.buckets.length === 0 ? <Empty title="No activity in this period" /> : undefined}
+        actions={
+          <Button
+            onClick={() =>
+              downloadCsv(
+                `report_${exportLabel}.csv`,
+                [
+                  kind,
+                  'units sold',
+                  'units received',
+                  'cost received',
+                  'transferred out',
+                  'transferred in',
+                  'written off',
+                  'adjusted (net)',
+                ],
+                buckets.map((b) => [
+                  b.bucket,
+                  b.unitsSold,
+                  b.unitsReceived,
+                  b.costReceived,
+                  b.unitsTransferredOut,
+                  b.unitsTransferredIn,
+                  b.unitsWrittenOff,
+                  b.unitsAdjustedNet,
+                ]),
+              )
+            }
+            disabled={data.buckets.length === 0}
+          >
+            Download CSV
+          </Button>
+        }
+        chart={
+          <SeriesChart
+            ariaLabel={`Units sold and received by ${kind}`}
+            series={[
+              { key: 'sold', label: 'Sold', color: VIZ.sold },
+              { key: 'received', label: 'Received', color: VIZ.received },
+            ]}
+            points={buckets.map((b) => ({
+              label: bucketLabel(b.bucket, kind),
+              heading: bucketHeading(b.bucket, kind),
+              values: [b.unitsSold, b.unitsReceived],
+            }))}
+            height={260}
+          />
+        }
+        table={
+          <MiniTable
+            head={[kind, 'Sold', 'Received', 'Cost received', 'Transfers in', 'Transfers out', 'Written off', 'Adjusted']}
+            rows={buckets.map((b) => [
+              bucketHeading(b.bucket, kind),
+              b.unitsSold,
+              b.unitsReceived,
+              money(b.costReceived),
+              b.unitsTransferredIn,
+              b.unitsTransferredOut,
+              b.unitsWrittenOff,
+              b.unitsAdjustedNet,
+            ])}
+          />
+        }
+      />
+
+      {!singleProduct && (
+        <section aria-labelledby="stands-out">
+          <h2 id="stands-out" className="text-ink-500 mb-2 text-[11px] font-medium uppercase tracking-wider">
+            What stands out
+          </h2>
+          <div className={`grid grid-cols-2 gap-3 transition-opacity lg:grid-cols-4 ${loading ? 'opacity-50' : ''}`}>
+            <KpiTile
+              label="Busiest weekday"
+              value={weekdaysWithSales.length >= 2 ? busiest.name : '—'}
+              sub={
+                weekdaysWithSales.length >= 2
+                  ? `${share(busiest.sold, s.unitsSold)} of units sold`
+                  : 'Needs sales on more than one weekday'
+              }
+            />
+            <KpiTile
+              label="Best-selling product"
+              value={bestSeller?.label ?? '—'}
+              sub={
+                bestSeller === undefined
+                  ? 'No sales in this period'
+                  : `${share(bestSeller.value, s.unitsSold)} of units sold`
+              }
+            />
+            <KpiTile
+              label="Top five products"
+              value={topSold.length > 0 ? share(top5, s.unitsSold) : '—'}
+              sub={topSold.length > 0 ? 'of all units sold' : 'No sales in this period'}
+            />
+            <KpiTile
+              label="Leading branch"
+              value={branchRows.length >= 2 && leader !== undefined ? leader.label : '—'}
+              sub={
+                branchRows.length >= 2 && leader !== undefined
+                  ? `${share(leader.value, s.unitsSold)} of units sold`
+                  : 'Needs sales at more than one branch'
+              }
+            />
+          </div>
+        </section>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {!singleProduct && (
+          <ChartCard
+            title="Top sellers"
+            subtitle="Units sold"
+            loading={loading}
+            empty={topSold.length === 0 ? <Empty title="No sales in this period" /> : undefined}
+            chart={<BarList color={VIZ.sold} rows={topSold.slice(0, 8)} format={qty} />}
+          />
+        )}
+
+        <ChartCard
+          title="Sales by weekday"
+          subtitle="Units sold - the busiest day in colour"
+          loading={loading}
+          empty={weekdaysWithSales.length === 0 ? <Empty title="No sales in this period" /> : undefined}
+          chart={
+            <SeriesChart
+              ariaLabel="Units sold by day of the week"
+              series={[{ key: 'sold', label: 'Sold', color: VIZ.sold }]}
+              points={weekdays.map((w) => ({ label: w.short, heading: w.name, values: [w.sold] }))}
+              kind="column"
+              emphasizeMax
+              height={320}
+            />
+          }
+          table={
+            <MiniTable
+              head={['Weekday', 'Sold', 'Received']}
+              rows={weekdays.map((w) => [w.name, w.sold, w.received])}
+            />
+          }
+        />
+      </div>
+
+      {(branchRows.length > 1 || categoryRows.length > 1) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {branchRows.length > 1 && (
+            <ChartCard
+              title="Sales by branch"
+              subtitle="Units sold"
+              loading={loading}
+              chart={<BarList color={VIZ.sold} rows={branchRows} format={qty} />}
+            />
+          )}
+          {categoryRows.length > 1 && (
+            <ChartCard
+              title="Sales by category"
+              subtitle="Units sold"
+              loading={loading}
+              chart={<BarList color={VIZ.sold} rows={categoryRows} format={qty} />}
+            />
+          )}
+        </div>
+      )}
+
+      <Card className="overflow-hidden">
+        <div className="border-ink-100 flex items-center justify-between border-b px-4 py-2.5">
+          <h2 className="text-[13px] font-semibold tracking-tight">
+            {singleProduct ? 'This product' : 'Most active products'}
+          </h2>
+          <Button
+            onClick={() =>
+              downloadCsv(
+                `report_by_product_${exportLabel}.csv`,
+                ['SKU', 'Product', 'units sold', 'units received', 'cost received', 'written off'],
+                data.byProduct.map((p) => [
+                  p.sku,
+                  p.productName,
+                  p.unitsSold,
+                  p.unitsReceived,
+                  p.costReceived,
+                  p.unitsWrittenOff,
+                ]),
+              )
+            }
+            disabled={data.byProduct.length === 0}
+          >
+            Download CSV
+          </Button>
+        </div>
+        {data.byProduct.length === 0 ? (
+          <p className="text-ink-400 px-4 py-6 text-center text-[12px]">No product activity in this period.</p>
+        ) : (
+          <ul className="divide-ink-100 divide-y">
+            {data.byProduct.map((p) => (
+              <li
+                key={p.productId}
+                className="flex flex-col gap-1 px-4 py-2.5 text-[12.5px] sm:flex-row sm:items-center sm:gap-3 sm:py-2"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">{p.productName}</span>
+                {/* sm:contents drops this wrapper from the box model at sm+, so its
+                    children fall back into a single dense row - below sm, it stays a
+                    normal flex row of its own underneath the name. */}
+                <div className="text-ink-400 grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_4.75rem] items-center gap-2 font-mono text-[11px] sm:contents">
+                  <span className="truncate sm:w-20 sm:shrink-0 sm:text-right">{p.sku}</span>
+                  <span className="tnum text-ink-800 text-right sm:w-20 sm:shrink-0 sm:text-[12.5px]">
+                    -{qty(p.unitsSold)}
+                  </span>
+                  <span className="tnum text-ink-800 text-right sm:w-20 sm:shrink-0 sm:text-[12.5px]">
+                    +{qty(p.unitsReceived)}
+                  </span>
+                  <span className="text-ink-500 tnum text-right sm:w-24 sm:shrink-0 sm:text-[12.5px]">
+                    {money(p.costReceived)}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
   );
 }
 

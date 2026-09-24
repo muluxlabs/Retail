@@ -13,7 +13,8 @@ import { sql } from 'kysely';
 
 export async function registerDashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get('/dashboard', { onRequest: [app.requirePermission('dashboard.read')] }, async () => {
-    const [inventory, exceptions, backdated, negative, master, recent] = await Promise.all([
+    const [inventory, exceptions, backdated, negative, master, recent, trading, topProducts, byCategory] =
+      await Promise.all([
       // Total inventory at weighted-average cost.
       app.db
         .selectFrom('stock_on_hand')
@@ -86,6 +87,65 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
         .groupBy(sql`occurred_at::date`)
         .orderBy(sql`occurred_at::date`, 'asc')
         .execute(),
+
+      // The last 30 days against the 30 before them, so a tile can say
+      // whether a number is moving rather than just what it is.
+      app.db
+        .selectFrom('stock_movement')
+        .select([
+          sql<number>`coalesce(sum(-qty_base) filter (where reason in ('sale', 'sale_refund') and occurred_at > now() - interval '30 days'), 0)`.as(
+            'soldNow',
+          ),
+          sql<number>`coalesce(sum(-qty_base) filter (where reason in ('sale', 'sale_refund') and occurred_at <= now() - interval '30 days'), 0)`.as(
+            'soldBefore',
+          ),
+          sql<number>`coalesce(sum(qty_base) filter (where reason in ('grn', 'grn_reversal') and occurred_at > now() - interval '30 days'), 0)`.as(
+            'receivedNow',
+          ),
+          sql<number>`coalesce(sum(qty_base) filter (where reason in ('grn', 'grn_reversal') and occurred_at <= now() - interval '30 days'), 0)`.as(
+            'receivedBefore',
+          ),
+        ])
+        .where(sql<boolean>`occurred_at > now() - interval '60 days'`)
+        .executeTakeFirst(),
+
+      app.db
+        .selectFrom('stock_movement')
+        .innerJoin('product', 'product.id', 'stock_movement.product_id')
+        .select([
+          'product.id as productId',
+          'product.name as productName',
+          'product.sku as sku',
+          sql<number>`round(sum(-qty_base), 4)`.as('unitsSold'),
+        ])
+        .where(sql<boolean>`reason in ('sale', 'sale_refund')`)
+        .where(sql<boolean>`occurred_at > now() - interval '30 days'`)
+        .groupBy(['product.id', 'product.name', 'product.sku'])
+        .having(sql<boolean>`sum(-qty_base) > 0`)
+        .orderBy(sql`sum(-qty_base)`, 'desc')
+        .limit(8)
+        .execute(),
+
+      // Same formula as the headline inventory figure (positive and negative
+      // positions both count), so the categories add up to it exactly.
+      app.db
+        .selectFrom('stock_on_hand')
+        .innerJoin('product', 'product.id', 'stock_on_hand.product_id')
+        .leftJoin('product_category', 'product_category.id', 'product.category_id')
+        .leftJoin('product_wac', (join) =>
+          join
+            .onRef('product_wac.product_id', '=', 'stock_on_hand.product_id')
+            .onRef('product_wac.branch_id', '=', 'stock_on_hand.branch_id'),
+        )
+        .select([
+          sql<string>`coalesce(product_category.name, 'Uncategorised')`.as('categoryName'),
+          sql<number>`round(coalesce(sum(stock_on_hand.qty_base * coalesce(product_wac.wac, 0)), 0), 2)`.as(
+            'value',
+          ),
+        ])
+        .groupBy(sql`coalesce(product_category.name, 'Uncategorised')`)
+        .orderBy(sql`sum(stock_on_hand.qty_base * coalesce(product_wac.wac, 0))`, 'desc')
+        .execute(),
     ]);
 
     const openTotal = exceptions.reduce((sum, e) => sum + Number(e.count), 0);
@@ -115,6 +175,14 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
         merged: master?.merged ?? 0,
       },
       activity: recent,
+      trading: {
+        soldNow: trading?.soldNow ?? 0,
+        soldBefore: trading?.soldBefore ?? 0,
+        receivedNow: trading?.receivedNow ?? 0,
+        receivedBefore: trading?.receivedBefore ?? 0,
+      },
+      topProducts,
+      inventoryByCategory: byCategory,
     };
   });
 }
