@@ -31,18 +31,18 @@ import { Users } from './pages/Users.js';
 const NAV = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
-  { to: '/receive', label: 'Receive', permission: 'movement.post' },
-  { to: '/count', label: 'Count', permission: 'stock.adjust' },
+  { to: '/receive', label: 'Goods received', permission: 'movement.post' },
+  { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
   // A cashier holds only cash.count, finance/auditor only cash.read - no
   // single permission covers everyone who should see this tab, so it takes
   // any-of. The page itself still decides what each of them can actually do.
   { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move'] },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
-  { to: '/stock', label: 'Stock', permission: 'stock.read' },
+  { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
   { to: '/reports', label: 'Reports', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
-  { to: '/ledger', label: 'Ledger', permission: 'stock.read' },
+  { to: '/ledger', label: 'Stock ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
   { to: '/branches', label: 'Branches', permission: 'branch.manage' },
   { to: '/settings', label: 'Settings', permission: 'settings.manage' },

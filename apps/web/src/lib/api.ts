@@ -354,6 +354,71 @@ export interface MovementReport {
   byWeekday: (ReportFigures & { weekday: number })[];
 }
 
+/** One entry on a bin card: a receipt or an issue, with the balance after it. */
+export interface StockLedgerRow {
+  seq: number;
+  occurredAt: string;
+  recordedAt: string;
+  reason: string;
+  docType: string | null;
+  /** The number on the paper document, where there is one (a transfer's dispatch note). */
+  reference: string | null;
+  qtyIn: number;
+  qtyOut: number;
+  balance: number;
+  unitCost: number | null;
+  actorName: string | null;
+  lateHours: number;
+}
+
+/** A stores ledger for one product at one branch over a period. */
+export interface StockLedger {
+  branch: { id: string; code: string; name: string };
+  product: { id: string; sku: string; name: string; baseUom: string };
+  from: string;
+  to: string;
+  opening: number;
+  receipts: number;
+  issues: number;
+  closing: number;
+  rows: StockLedgerRow[];
+  onHandNow: number;
+  /** null when the period ended in the past: nothing current to compare it to. */
+  agreesToStockOnHand: boolean | null;
+}
+
+export interface ReconciliationLine {
+  productId: string;
+  sku: string;
+  productName: string;
+  baseUom: string;
+  opening: number;
+  /** Signed: what came in is positive, what went out is negative. */
+  purchases: number;
+  transfersIn: number;
+  transfersOut: number;
+  sales: number;
+  /** Stock introduced when trading began here. A movement, not a balance, and not an adjustment. */
+  openingStock: number;
+  adjustments: number;
+  closing: number;
+  onHand: number;
+  balanced: boolean;
+  agreesToStockOnHand: boolean | null;
+}
+
+export interface StockReconciliation {
+  branch: { id: string; code: string; name: string };
+  from: string;
+  to: string;
+  reachesToday: boolean;
+  lines: ReconciliationLine[];
+  limit: number;
+  offset: number;
+  allBalanced: boolean;
+  allAgreeToStockOnHand: boolean | null;
+}
+
 /** What a branch reset is about to zero, read at the moment it is asked for. */
 export interface ResetPreview {
   branchId: string;
@@ -723,6 +788,17 @@ export const api = {
     categoryId?: string;
     productId?: string;
   }) => request<MovementReport>(`/api/reports/movements${qs(params)}`),
+
+  stockLedger: (params: { branchId: string; productId: string; from?: string; to?: string }) =>
+    request<StockLedger>(`/api/stock-ledger${qs(params)}`),
+
+  stockReconciliation: (params: {
+    branchId: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    limit?: number;
+  }) => request<StockReconciliation>(`/api/stock-reconciliation${qs(params)}`),
 
   stockResetPreview: (branchId: string) =>
     request<ResetPreview>(`/api/branches/${branchId}/stock-reset/preview`),

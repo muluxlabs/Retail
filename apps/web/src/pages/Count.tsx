@@ -117,7 +117,7 @@ export function Count() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Stock count</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Stock take</h1>
           <p className="text-ink-500 mt-0.5 text-[12.5px]">
             Enter what you physically counted. A blank line is not submitted - it stays uncounted,
             not zero.

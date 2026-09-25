@@ -17,6 +17,7 @@ import { useState } from 'react';
 
 import { api, ApiError, type Branch, type Product } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { stockReason } from '../lib/terms.js';
 import { Badge, Button, Card, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
 export function Receive() {
@@ -98,7 +99,7 @@ export function Receive() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Receive stock</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Goods received</h1>
         <p className="text-ink-500 mt-0.5 text-[12.5px]">
           Post a goods receipt. Enter what arrived, in the pack it arrived in - the ledger converts
           it to base units.
@@ -297,7 +298,7 @@ export function Receive() {
                     {qty(m.qtyBase)}
                   </span>
                   <span className="text-ink-600 min-w-0 flex-1 truncate">{m.productName}</span>
-                  <Badge tone="neutral">{m.reason.replace(/_/g, ' ')}</Badge>
+                  <Badge tone="neutral">{stockReason(m.reason).short}</Badge>
                 </li>
               ))}
             </ul>

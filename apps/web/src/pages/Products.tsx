@@ -20,6 +20,7 @@ import { useState } from 'react';
 
 import { api, ApiError, type Category, type Pack } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { stockReason } from '../lib/terms.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
 const BASE_UOM_SUGGESTIONS = ['each', 'kg', 'litre', 'box'];
@@ -560,7 +561,7 @@ function Detail({
                     {m.qtyBase > 0 ? '+' : ''}
                     {qty(m.qtyBase)}
                   </span>
-                  <span className="text-ink-500 truncate">{m.reason.replace(/_/g, ' ')}</span>
+                  <span className="text-ink-500 truncate">{stockReason(m.reason).short}</span>
                   <span className="text-ink-300 ml-auto shrink-0 text-[11px]">{m.branchCode}</span>
                 </li>
               ))}

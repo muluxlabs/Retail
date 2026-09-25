@@ -99,3 +99,22 @@
   --viz-text: #6d7179;
   --viz-good-text: #006300;
 }
+
+/*
+ * Printing. A ledger or a receipt printed from the browser should be the
+ * document and nothing else: no navigation bar, no buttons.
+ */
+@media print {
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}

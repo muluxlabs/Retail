@@ -34,6 +34,7 @@ import {
   bucketLabel,
   pctChange,
 } from '../lib/chartMath.js';
+import { downloadCsv } from '../lib/csv.js';
 import { Button, Card, Empty, ErrorNote, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
 type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
@@ -61,21 +62,6 @@ function presetRange(preset: Exclude<Preset, 'custom'>): { from: string; to: str
     return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to };
   }
   return { from: ymd(new Date(now.getFullYear(), 0, 1)), to };
-}
-
-function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
-  const escape = (v: string | number) => {
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [headers, ...rows].map((r) => r.map(escape).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 const PRESETS: { value: Preset; label: string }[] = [
@@ -447,7 +433,7 @@ function ReportBody({
           }
         />
         <KpiTile
-          label="Units received"
+          label="Goods received (units)"
           value={qty(s.unitsReceived)}
           spark={{ values: buckets.map((b) => b.unitsReceived), color: VIZ.received }}
           delta={
@@ -461,7 +447,7 @@ function ReportBody({
           }
         />
         <KpiTile
-          label="Cost received"
+          label="Purchases at cost"
           value={money(s.costReceived)}
           spark={{ values: buckets.map((b) => b.costReceived), color: VIZ.received }}
           delta={
@@ -495,12 +481,12 @@ function ReportBody({
                   kind,
                   'units sold',
                   'units received',
-                  'cost received',
+                  'purchases at cost',
                   'transferred out',
                   'transferred in',
-                  'written off',
-                  'adjusted (net)',
-                  'reset (net)',
+                  'write-offs',
+                  'stock take adjustments (net)',
+                  'cleared to nil (net)',
                 ],
                 buckets.map((b) => [
                   b.bucket,
@@ -537,7 +523,7 @@ function ReportBody({
         }
         table={
           <MiniTable
-            head={[kind, 'Sold', 'Received', 'Cost received', 'Transfers in', 'Transfers out', 'Written off', 'Adjusted', 'Reset']}
+            head={[kind, 'Sold', 'Received', 'Purchases at cost', 'Transfers in', 'Transfers out', 'Write-offs', 'Stock take adj.', 'Cleared to nil']}
             rows={buckets.map((b) => [
               bucketHeading(b.bucket, kind),
               b.unitsSold,

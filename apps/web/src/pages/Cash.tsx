@@ -12,6 +12,7 @@ import { useState } from 'react';
 
 import { api, ApiError, type Branch, type CashPointKind, type CashPointPosition, type CashPointRef } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { cashReason } from '../lib/terms.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, Spinner, timeAgo, useAsync } from '../lib/ui.js';
 
 const KIND_LABEL: Record<string, string> = { till: 'Till', safe: 'Safe', petty: 'Petty cash', bank: 'Bank' };
@@ -171,7 +172,7 @@ export function Cash() {
                         {money(Number(m.amount))}
                       </span>
                       <span className="text-ink-600 min-w-0 flex-1 truncate">
-                        {m.cashPointName} · {m.reason.replace(/_/g, ' ')}
+                        {m.cashPointName} · {cashReason(m.reason).short}
                       </span>
                       <span className="text-ink-300 shrink-0 text-[11px]">{timeAgo(m.occurredAt)}</span>
                     </li>
