@@ -36,6 +36,27 @@ import {
 
 const DAYS = 30;
 
+/** What the business owes its suppliers, and how much of it is late: one line, with the way in. */
+function OwedToSuppliers() {
+  const owed = useAsync(() => api.payables(), []);
+  if (owed.data === undefined) return null;
+  const t = owed.data.totals;
+  const overdue = t.total - t.notDue;
+  return (
+    <section aria-label="Owed to suppliers" data-testid="owed-tile">
+      <Link to="/owed" className="border-ink-200/80 hover:bg-ink-50/60 flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-xl border bg-white px-4 py-3 transition">
+        <span className="text-ink-500 text-[11px] font-medium uppercase tracking-wider">Owed to suppliers</span>
+        <span className="tnum text-xl font-semibold">{money(t.total)}</span>
+        <span className={`text-[12.5px] ${overdue > 0 ? 'font-medium text-red-700' : 'text-ink-400'}`}>
+          {overdue > 0 ? `${money(overdue)} overdue` : 'nothing overdue'}
+        </span>
+        {t.credit > 0 && <span className="text-ink-400 text-[12.5px]">{money(t.credit)} prepaid</span>}
+        <span className="text-accent-700 ml-auto text-[12px] font-medium">Aged creditors →</span>
+      </Link>
+    </section>
+  );
+}
+
 /**
  * Today's trading: net sales, cost of sales and gross profit so far today, each
  * against the whole of yesterday, with the last fortnight as a trend line. The
@@ -140,7 +161,7 @@ function foldTail<T extends { key: string; label: string; value: number }>(rows:
 }
 
 export function Dashboard() {
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const dash = useAsync(() => api.dashboard(), []);
   const branches = useAsync(() => api.stockByBranch(), []);
 
@@ -179,6 +200,7 @@ export function Dashboard() {
       </div>
 
       {can('sale.read') && <TodaysTrading />}
+      {can('supplier.read') && (user?.branchIds?.length ?? 0) === 0 && <OwedToSuppliers />}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat

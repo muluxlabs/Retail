@@ -27,9 +27,11 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
-import { parseQuery } from '../validation.js';
+import type { Database } from '@retail-ops/db';
+import type { Kysely } from 'kysely';
 
-const DAY_MS = 86_400_000;
+import { businessTimezone } from '../services/purchasing.js';
+import { parseQuery } from '../validation.js';
 
 /** Inclusive calendar dates in, a half-open [from, toExclusive) interval out. */
 const periodQuery = {
@@ -37,13 +39,24 @@ const periodQuery = {
   to: z.coerce.date().optional(),
 };
 
-function resolvePeriod(from: Date | undefined, to: Date | undefined) {
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const start = from ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const end = to ?? today;
-  const toExclusive = new Date(end.getTime() + DAY_MS);
-  return { start, end, toExclusive, reachesToday: toExclusive.getTime() > now.getTime() };
+/**
+ * The period on the BUSINESS calendar: a day starts at midnight in the business
+ * time zone, not at midnight UTC, so a sale at 00:30 in Harare is on the day the
+ * shop thinks it is - the same day the sales and item reports put it on.
+ */
+async function resolvePeriod(db: Kysely<Database>, from: Date | undefined, to: Date | undefined) {
+  const tz = await businessTimezone(db);
+  const { rows } = await sql<{ today: string; monthStart: string }>`
+    SELECT to_char((now() AT TIME ZONE ${tz})::date, 'YYYY-MM-DD') AS today,
+           to_char(date_trunc('month', now() AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS "monthStart"`.execute(db);
+  const fromDay = from?.toISOString().slice(0, 10) ?? rows[0]!.monthStart;
+  const toDay = to?.toISOString().slice(0, 10) ?? rows[0]!.today;
+  const bounds = await sql<{ start: Date; toExclusive: Date }>`
+    SELECT ((${fromDay}::date)::timestamp AT TIME ZONE ${tz}) AS start,
+           (((${toDay}::date + 1))::timestamp AT TIME ZONE ${tz}) AS "toExclusive"`.execute(db);
+  const start = bounds.rows[0]!.start;
+  const toExclusive = bounds.rows[0]!.toExclusive;
+  return { start, fromDay, toDay, toExclusive, reachesToday: toExclusive.getTime() > Date.now() };
 }
 
 const binCardQuery = z.object({
@@ -106,7 +119,7 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
    */
   app.get('/stock-ledger', { onRequest: [app.requirePermission('stock.read')] }, async (request, reply) => {
     const q = parseQuery(binCardQuery, request.query);
-    const { start, end, toExclusive, reachesToday } = resolvePeriod(q.from, q.to);
+    const { start, fromDay, toDay, toExclusive, reachesToday } = await resolvePeriod(app.db, q.from, q.to);
 
     const [branch, product] = await Promise.all([
       app.db.selectFrom('branch').select(['id', 'code', 'name']).where('id', '=', q.branchId).executeTakeFirst(),
@@ -167,8 +180,8 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
     return {
       branch,
       product,
-      from: start.toISOString().slice(0, 10),
-      to: end.toISOString().slice(0, 10),
+      from: fromDay,
+      to: toDay,
       opening: Number(opening.toFixed(4)),
       receipts: Number(receipts.toFixed(4)),
       issues: Number(issues.toFixed(4)),
@@ -190,7 +203,7 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
     { onRequest: [app.requirePermission('stock.read')] },
     async (request, reply) => {
       const q = parseQuery(reconciliationQuery, request.query);
-      const { start, end, toExclusive, reachesToday } = resolvePeriod(q.from, q.to);
+      const { start, fromDay, toDay, toExclusive, reachesToday } = await resolvePeriod(app.db, q.from, q.to);
 
       const branch = await app.db
         .selectFrom('branch')
@@ -264,8 +277,8 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
 
       return {
         branch,
-        from: start.toISOString().slice(0, 10),
-        to: end.toISOString().slice(0, 10),
+        from: fromDay,
+        to: toDay,
         reachesToday,
         lines,
         limit: q.limit,

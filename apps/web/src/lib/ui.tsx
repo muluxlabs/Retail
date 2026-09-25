@@ -80,12 +80,11 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
 export function Card({
   children,
   className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      {...rest}
       className={`bg-white border border-ink-200/80 rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] ${className}`}
     >
       {children}

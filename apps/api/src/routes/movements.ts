@@ -68,10 +68,38 @@ const countBody = z.object({
     .min(1, 'A count needs at least one line.'),
 });
 
+/**
+ * Holding movement.post - which a cashier does, to sell - must not be enough to
+ * put stock on the books. Each reason needs the authority that fits it, and the
+ * ones with a proper document of their own (a sale, a transfer) are not posted
+ * through this route at all.
+ */
+const REASON_PERMISSION: Partial<Record<(typeof REASONS)[number], string>> = {
+  grn: 'grn.post',
+  grn_reversal: 'grn.post',
+  count_adjustment: 'stock.adjust',
+  write_off: 'stock.adjust',
+  opening_balance: 'stock.adjust',
+};
+
 export async function registerMovementRoutes(app: FastifyInstance): Promise<void> {
   /** Post one movement. Idempotent on eventId. */
   app.post('/movements', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
     const body = parseBody(movementBody, request.body);
+    const needed = REASON_PERMISSION[body.reason];
+    if (needed === undefined) {
+      return reply.status(422).send({
+        error: {
+          code: 'INVALID_MOVEMENT',
+          message: `A ${body.reason.replace(/_/g, ' ')} is posted through its own screen (checkout, transfers), not as a bare stock movement.`,
+        },
+      });
+    }
+    if (request.user?.permissions.has(needed) !== true) {
+      return reply.status(403).send({
+        error: { code: 'NOT_PERMITTED', message: 'Your role does not allow that action.', detail: { permission: needed } },
+      });
+    }
     const result = await postMovement(app.db, body);
     // A replay is a success, but it is not a creation.
     return reply.status(result.replayed ? 200 : 201).send(result);

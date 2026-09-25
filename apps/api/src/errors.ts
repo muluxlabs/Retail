@@ -56,6 +56,12 @@ const STATUS_BY_CODE: Record<string, number> = {
   PRICE_OVERRIDE_REQUIRED: 403,
   // A branch with tills must say which one took the cash.
   TILL_REQUIRED: 422,
+  // Buying: an order, delivery or payment that is not valid as asked.
+  INVALID_PURCHASE: 422,
+  PURCHASE_ORDER_NOT_OPEN: 409,
+  PAYMENT_ALREADY_VOIDED: 409,
+  PURCHASING_DOCUMENT_NOT_FOUND: 404,
+  PROOF_REJECTED: 422,
 };
 
 export interface ErrorBody {

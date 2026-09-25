@@ -220,6 +220,282 @@ export interface ItemHistory {
   totals: { received: number; sold: number; net: number; cost: number; grossProfit: number };
 }
 
+// -- buying: suppliers, orders, goods received, payments -------------------------------------------
+
+export type SupplierTerms = 'prepaid' | 'cash_on_delivery' | 'credit';
+export type PaymentTiming = 'prepaid' | 'on_delivery' | 'after_delivery' | 'on_account';
+export type PoStatus = 'ordered' | 'part_received' | 'received' | 'closed' | 'cancelled';
+
+export interface SupplierRow {
+  id: string;
+  code: string;
+  name: string;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  terms: SupplierTerms;
+  creditDays: number | null;
+  isActive: boolean;
+  /** Null when the viewer is tied to a branch: what the group owes is group-wide finance. */
+  receivedCost: number | null;
+  paid: number | null;
+  balance: number | null;
+  lastDelivery: string | null;
+  openOrders: number;
+}
+
+export interface SupplierInput {
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tin?: string | null;
+  terms: SupplierTerms;
+  creditDays?: number | null;
+  notes?: string | null;
+}
+
+export interface StatementLine {
+  at: string;
+  kind: 'received' | 'payment' | 'void';
+  ref: string;
+  description: string;
+  id: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  timing?: PaymentTiming;
+}
+
+export interface AgeingItem {
+  grnId: string;
+  grnNo: string;
+  day: string;
+  dueDay: string;
+  amount: number;
+  outstanding: number;
+  daysOverdue: number;
+}
+
+export interface SupplierAccount {
+  balance: number;
+  receivedCost: number;
+  paid: number;
+  ageing: {
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+    total: number;
+    credit: number;
+    items: AgeingItem[];
+  };
+  statement: StatementLine[];
+}
+
+export interface SupplierDetail {
+  supplier: {
+    id: string;
+    code: string;
+    name: string;
+    contactPerson: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    tin: string | null;
+    terms: SupplierTerms;
+    creditDays: number | null;
+    notes: string | null;
+    isActive: boolean;
+  };
+  financeHidden: boolean;
+  account: SupplierAccount | null;
+}
+
+export interface OrderSummary {
+  id: string;
+  poNo: string;
+  status: PoStatus;
+  orderedAt: string;
+  expectedDate: string | null;
+  terms: SupplierTerms;
+  creditDays: number | null;
+  supplier: { id: string; name: string; code: string };
+  branch: { id: string; name: string; code: string };
+  orderedByName: string;
+  lineCount: number;
+  ordered: number;
+  received: number;
+  paid: number | null;
+  paymentStatus: 'unpaid' | 'part_paid' | 'paid' | null;
+}
+
+export interface OrderLine {
+  id: string;
+  lineNo: number;
+  productId: string;
+  sku: string;
+  name: string;
+  packId: string;
+  packLabel: string;
+  qtyPacks: number;
+  qtyBase: number;
+  unitCost: number;
+  lineTotal: number;
+  receivedPacks: number;
+  outstandingPacks: number;
+}
+
+export interface OrderPayment {
+  id: string;
+  paymentNo: string;
+  amount: number;
+  paidAt: string;
+  reference: string | null;
+  method: string;
+  voidedAt: string | null;
+  proofs: number;
+  timing: PaymentTiming;
+}
+
+export interface OrderDetail extends OrderSummary {
+  notes: string | null;
+  cancelled: { at: string; reason: string } | null;
+  closed: { at: string; note: string } | null;
+  lines: OrderLine[];
+  receipts: { id: string; grnNo: string; receivedAt: string; totalCost: number; invoiceNo: string | null; receivedByName: string }[];
+  payments: OrderPayment[];
+  financeHidden: boolean;
+}
+
+export interface OrderInput {
+  supplierId: string;
+  branchId: string;
+  expectedDate?: string | null;
+  terms?: SupplierTerms;
+  creditDays?: number | null;
+  notes?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost: number }[];
+}
+
+export interface GrnInput {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  poId?: string | null;
+  supplierInvoiceNo?: string | null;
+  invoiceDate?: string | null;
+  invoiceTotal?: number | null;
+  notes?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost: number; poLineId?: string | null }[];
+}
+
+export interface GrnSummary {
+  id: string;
+  grnNo: string;
+  receivedAt: string;
+  totalCost: number;
+  invoiceNo: string | null;
+  invoiceDate: string | null;
+  invoiceTotal: number | null;
+  supplierId: string;
+  supplierName: string;
+  branchId: string;
+  branchName: string;
+  poNo: string | null;
+  receivedByName: string;
+  lineCount: number;
+  paid: number | null;
+}
+
+export interface GrnDetail {
+  id: string;
+  grnNo: string;
+  receivedAt: string;
+  totalCost: number;
+  invoiceNo: string | null;
+  invoiceDate: string | null;
+  invoiceTotal: number | null;
+  notes: string | null;
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string;
+  branchId: string;
+  branchName: string;
+  branchCode: string;
+  poId: string | null;
+  poNo: string | null;
+  receivedByName: string;
+  lines: {
+    lineNo: number;
+    productId: string;
+    sku: string;
+    name: string;
+    packLabel: string;
+    qtyPacks: number;
+    qtyBase: number;
+    unitCost: number;
+    lineTotal: number;
+    orderedUnitCost: number | null;
+    orderedPacks: number | null;
+  }[];
+}
+
+export interface PaymentRow {
+  id: string;
+  paymentNo: string;
+  amount: number;
+  paidAt: string;
+  reference: string | null;
+  methodId: string;
+  method: string;
+  note: string | null;
+  supplierId: string;
+  supplierName: string;
+  poNo: string | null;
+  grnNo: string | null;
+  recordedByName: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  proofs: number;
+  timing: PaymentTiming;
+}
+
+export interface PaymentDetail extends Omit<PaymentRow, 'methodId' | 'timing' | 'proofs'> {
+  poId: string | null;
+  grnId: string | null;
+  recordedAt: string;
+  voidedByName: string | null;
+  proofs: { id: string; fileName: string; contentType: string; sizeBytes: number; sha256: string; uploadedAt: string; uploadedByName: string }[];
+}
+
+export interface PaymentInput {
+  id: string;
+  supplierId: string;
+  amount: number;
+  paymentTypeId: string;
+  reference?: string | null;
+  paidAt?: string;
+  poId?: string | null;
+  grnId?: string | null;
+  note?: string | null;
+}
+
+export interface Payables {
+  asOf: string;
+  totals: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number; total: number; credit: number };
+  suppliers: {
+    supplierId: string;
+    code: string;
+    name: string;
+    terms: SupplierTerms;
+    balance: number;
+    owed: number;
+    credit: number;
+    overdue: number;
+    oldestOverdueDays: number;
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  }[];
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -880,6 +1156,78 @@ export const api = {
     id: string,
     params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month'; branchId?: string },
   ) => request<ItemHistory>(`/api/reports/items/${id}/history${qs({ ...params })}`),
+
+  // -- buying ------------------------------------------------------------------------------
+  suppliers: (params: { q?: string; includeInactive?: boolean } = {}) =>
+    request<{ items: SupplierRow[]; financeHidden: boolean }>(`/api/suppliers${qs({ ...params })}`),
+
+  supplier: (id: string) => request<SupplierDetail>(`/api/suppliers/${id}`),
+
+  createSupplier: (body: SupplierInput) =>
+    request<{ id: string; code: string; name: string }>('/api/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateSupplier: (id: string, body: Partial<SupplierInput> & { isActive?: boolean }) =>
+    request<{ ok: true }>(`/api/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  payables: () => request<Payables>('/api/payables'),
+
+  orders: (params: { supplierId?: string; branchId?: string; status?: string; q?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: OrderSummary[]; total: number; financeHidden: boolean }>(`/api/purchase-orders${qs({ ...params })}`),
+
+  order: (id: string) => request<OrderDetail>(`/api/purchase-orders/${id}`),
+
+  createOrder: (body: OrderInput) =>
+    request<{ id: string; poNo: string }>('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) }),
+
+  cancelOrder: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/purchase-orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  closeOrder: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/purchase-orders/${id}/close`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  receiveGoods: (body: GrnInput) =>
+    request<{ id: string; grnNo: string; totalCost: number; replayed: boolean }>('/api/goods-received', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  goodsReceived: (params: { supplierId?: string; branchId?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: GrnSummary[]; financeHidden: boolean }>(`/api/goods-received${qs({ ...params })}`),
+
+  goodsReceivedNote: (id: string) => request<GrnDetail>(`/api/goods-received/${id}`),
+
+  supplierPayments: (params: { supplierId?: string; paymentTypeId?: string; from?: string; to?: string; includeVoided?: boolean; limit?: number; offset?: number } = {}) =>
+    request<{ items: PaymentRow[]; total: number; count: number }>(`/api/supplier-payments${qs({ ...params })}`),
+
+  supplierPayment: (id: string) => request<PaymentDetail>(`/api/supplier-payments/${id}`),
+
+  paySupplier: (body: PaymentInput) =>
+    request<{ id: string; paymentNo: string; replayed: boolean }>('/api/supplier-payments', { method: 'POST', body: JSON.stringify(body) }),
+
+  voidPayment: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/supplier-payments/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  /** Attach a screenshot, photo or PDF as the raw body; the name travels in a header. */
+  attachProof: async (paymentId: string, file: File) => {
+    const response = await fetch(`${API_BASE}/api/supplier-payments/${paymentId}/proofs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+      body: file,
+    });
+    if (!response.ok) {
+      let body: ApiErrorBody;
+      try {
+        body = (await response.json()) as ApiErrorBody;
+      } catch {
+        body = { error: { code: 'UNKNOWN', message: `${response.status} ${response.statusText}` } };
+      }
+      throw new ApiError(response.status, body);
+    }
+    return (await response.json()) as { id: string; contentType: string; sizeBytes: number };
+  },
+
+  proofUrl: (proofId: string) => `${API_BASE}/api/supplier-payments/proofs/${proofId}`,
 
   businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
 

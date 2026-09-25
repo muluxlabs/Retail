@@ -100,3 +100,27 @@ export function settleRows(netCents: number, rows: readonly PaymentRowInput[]): 
   if (problem === null && remaining > 0) problem = 'The payments do not cover the total yet.';
   return { rows: results, remainingCents: remaining, changeCents: change, problem };
 }
+
+/**
+ * What a line of a delivery or order costs, in whole cents: packs times the
+ * price of one pack, rounded to the cent. Mirrors costLineCents in the domain
+ * package (the server recomputes it and is the authority).
+ */
+export function costLineCents(qtyPacks: number, unitCostPerPack: number): number {
+  return Math.round(Number((qtyPacks * unitCostPerPack * 100).toFixed(6)));
+}
+
+/** A per-pack cost as typed: up to four decimal places. null = blank or invalid. */
+export function parseCost(text: string): number | null {
+  const t = text.trim();
+  if (t === '' || !/^\d*\.?\d{0,4}$/.test(t) || t === '.') return null;
+  return Number(t);
+}
+
+/** A quantity as typed: a positive number. null = blank or invalid. */
+export function parseQty(text: string): number | null {
+  const t = text.trim();
+  if (t === '' || !/^\d*\.?\d{0,4}$/.test(t) || t === '.') return null;
+  const n = Number(t);
+  return n > 0 ? n : null;
+}

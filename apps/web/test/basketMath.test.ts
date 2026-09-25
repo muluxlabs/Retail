@@ -64,3 +64,24 @@ describe('till arithmetic agrees with the domain rule the server applies', () =>
     expect(parseMoney('.')).toBeNull();
   });
 });
+
+import { costLineCents as domainCostLine } from '../../../packages/domain/src/purchasing.js';
+import { costLineCents as webCostLine, parseCost, parseQty } from '../src/lib/basketMath.js';
+
+describe('buying arithmetic agrees with the domain rule the server applies', () => {
+  it('rounds a delivery line the same way', () => {
+    for (const [q, c] of [[10, 13.5], [3, 0.335], [0.5, 2.01], [7, 1.1], [24, 0.5625], [1.5, 0.333]] as const) {
+      expect(webCostLine(q, c)).toBe(domainCostLine(q, c));
+    }
+  });
+
+  it('parses typed costs and quantities strictly', () => {
+    expect(parseCost('13.5')).toBe(13.5);
+    expect(parseCost('0.3350')).toBe(0.335);
+    expect(parseCost('1.23456')).toBeNull();
+    expect(parseCost('')).toBeNull();
+    expect(parseQty('4')).toBe(4);
+    expect(parseQty('0')).toBeNull();
+    expect(parseQty('abc')).toBeNull();
+  });
+});

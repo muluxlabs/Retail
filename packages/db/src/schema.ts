@@ -437,6 +437,134 @@ export interface SalePaymentTable {
   reference: string | null;
 }
 
+// -- suppliers, purchase orders, goods received, supplier payments (migration 012) -------------
+
+export type SupplierTerms = 'prepaid' | 'cash_on_delivery' | 'credit';
+
+/** Set once after insert (a cancellation, a void): null until then. */
+type SetOnce<T> = ColumnType<T | null, T | null | undefined, T | null>;
+
+export interface SupplierTable {
+  id: Generated<string>;
+  code: Generated<string>;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  tin: string | null;
+  terms: ColumnType<SupplierTerms, SupplierTerms | undefined, SupplierTerms>;
+  credit_days: number | null;
+  notes: string | null;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_by: string | null;
+  created_at: Timestamp;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GroupCounterTable {
+  doc_kind: string;
+  last_no: ColumnType<number, number | undefined, number>;
+}
+
+export interface PurchaseOrderTable {
+  id: Generated<string>;
+  po_no: string;
+  supplier_id: string;
+  branch_id: string;
+  ordered_by: string;
+  ordered_at: Timestamp;
+  expected_date: string | null;
+  terms: SupplierTerms;
+  credit_days: number | null;
+  notes: string | null;
+  cancelled_at: SetOnce<Date | string>;
+  cancelled_by: SetOnce<string>;
+  cancel_reason: SetOnce<string>;
+  closed_at: SetOnce<Date | string>;
+  closed_by: SetOnce<string>;
+  close_note: SetOnce<string>;
+}
+
+export interface PurchaseOrderLineTable {
+  id: Generated<string>;
+  po_id: string;
+  line_no: number;
+  product_id: string;
+  pack_id: string;
+  qty_packs: number;
+  qty_base: number;
+  unit_cost: number;
+  line_total: number;
+}
+
+export interface GoodsReceivedTable {
+  id: string;
+  grn_no: string;
+  supplier_id: string;
+  branch_id: string;
+  po_id: string | null;
+  received_by: string;
+  received_at: ColumnType<Date, Date | string, never>;
+  supplier_invoice_no: string | null;
+  invoice_date: string | null;
+  invoice_total: number | null;
+  notes: string | null;
+  total_cost: number;
+  recorded_at: Timestamp;
+}
+
+export interface GoodsReceivedLineTable {
+  id: Generated<string>;
+  grn_id: string;
+  line_no: number;
+  po_line_id: string | null;
+  product_id: string;
+  pack_id: string;
+  qty_packs: number;
+  qty_base: number;
+  unit_cost: number;
+  line_total: number;
+  movement_seq: number;
+}
+
+export interface SupplierPaymentTable {
+  id: string;
+  payment_no: string;
+  supplier_id: string;
+  amount: number;
+  payment_type_id: string;
+  reference: string | null;
+  paid_at: ColumnType<Date, Date | string, never>;
+  po_id: string | null;
+  grn_id: string | null;
+  note: string | null;
+  recorded_by: string;
+  recorded_at: Timestamp;
+  voided_at: SetOnce<Date | string>;
+  voided_by: SetOnce<string>;
+  void_reason: SetOnce<string>;
+}
+
+export interface SupplierPaymentProofTable {
+  id: Generated<string>;
+  payment_id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  data: Buffer;
+  uploaded_by: string;
+  uploaded_at: Timestamp;
+}
+
+export interface SupplierBalanceView {
+  supplier_id: string;
+  received_cost: number;
+  paid: number;
+  balance: number;
+}
+
 export interface Database {
   branch: BranchTable;
   terminal: TerminalTable;
@@ -451,6 +579,15 @@ export interface Database {
   sale: SaleTable;
   sale_line: SaleLineTable;
   sale_payment: SalePaymentTable;
+  supplier: SupplierTable;
+  group_counter: GroupCounterTable;
+  purchase_order: PurchaseOrderTable;
+  purchase_order_line: PurchaseOrderLineTable;
+  goods_received: GoodsReceivedTable;
+  goods_received_line: GoodsReceivedLineTable;
+  supplier_payment: SupplierPaymentTable;
+  supplier_payment_proof: SupplierPaymentProofTable;
+  supplier_balance: SupplierBalanceView;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

@@ -11,6 +11,13 @@ import { Exceptions } from './pages/Exceptions.js';
 import { Items } from './pages/Items.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
+import { NewOrder, Orders } from './pages/Orders.js';
+import { OrderDetail } from './pages/OrderDetail.js';
+import { Owed } from './pages/Owed.js';
+import { Payments } from './pages/Payments.js';
+import { ReceiveDetail } from './pages/ReceiveDetail.js';
+import { SupplierDetail } from './pages/SupplierDetail.js';
+import { Suppliers } from './pages/Suppliers.js';
 import { Prices } from './pages/Prices.js';
 import { Profit } from './pages/Profit.js';
 import { Products } from './pages/Products.js';
@@ -33,11 +40,17 @@ import { Users } from './pages/Users.js';
  * to catch what these two get wrong.
  */
 const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
+const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/payments', '/owed'];
+
+/** A path is inside a group when it is the group's path or below it (/orders/new is inside /orders). */
+const inGroup = (group: string[] | undefined, pathname: string): boolean =>
+  group?.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ?? false;
 
 const NAV: { to: string; label: string; end?: boolean; permission: string | string[]; group?: string[] }[] = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
-  { to: '/receive', label: 'Goods received', permission: 'movement.post' },
+  // One tab for everything to do with suppliers; the screens inside are switched by the BuyingTabs bar.
+  { to: '/suppliers', label: 'Buying', permission: ['supplier.read', 'grn.post'], group: BUYING_PATHS },
   { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
   // A cashier holds only cash.count, finance/auditor only cash.read - no
@@ -58,7 +71,9 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
 
 /** Reports opens on sales and profit for anyone who may see sales, otherwise on stock movement. */
 function navTarget(item: { to: string; group?: string[] }, can: (p: string) => boolean): string {
-  return item.group !== undefined && can('sale.read') ? '/profit' : item.to;
+  if (item.group === undefined) return item.to;
+  if (item.to === '/suppliers') return can('supplier.read') ? '/suppliers' : '/receive';
+  return can('sale.read') ? '/profit' : item.to;
 }
 
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
@@ -124,7 +139,7 @@ export function App() {
                 end={item.end ?? false}
                 className={({ isActive }) =>
                   `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition xl:px-1.5 2xl:px-2.5 ${
-                    isActive || (item.group?.includes(location.pathname) ?? false)
+                    isActive || inGroup(item.group, location.pathname)
                       ? 'bg-ink-100 text-ink-900'
                       : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
                   }`
@@ -167,7 +182,7 @@ export function App() {
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
                   `border-ink-100 block border-b px-5 py-3 text-[13.5px] font-medium ${
-                    isActive || (item.group?.includes(location.pathname) ?? false) ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
+                    isActive || inGroup(item.group, location.pathname) ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
                   }`
                 }
               >
@@ -186,7 +201,15 @@ export function App() {
           <Route path="/sales" element={<Guard permission="sale.read" home={home}><Sales /></Guard>} />
           <Route path="/profit" element={<Guard permission="sale.read" home={home}><Profit /></Guard>} />
           <Route path="/items" element={<Guard permission="sale.read" home={home}><Items /></Guard>} />
-          <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
+          <Route path="/suppliers" element={<Guard permission="supplier.read" home={home}><Suppliers /></Guard>} />
+          <Route path="/suppliers/:id" element={<Guard permission="supplier.read" home={home}><SupplierDetail /></Guard>} />
+          <Route path="/orders" element={<Guard permission="supplier.read" home={home}><Orders /></Guard>} />
+          <Route path="/orders/new" element={<Guard permission="po.write" home={home}><NewOrder /></Guard>} />
+          <Route path="/orders/:id" element={<Guard permission="supplier.read" home={home}><OrderDetail /></Guard>} />
+          <Route path="/receive" element={<Guard permission="grn.post" home={home}><Receive /></Guard>} />
+          <Route path="/receive/:id" element={<Guard permission="supplier.read" home={home}><ReceiveDetail /></Guard>} />
+          <Route path="/payments" element={<Guard permission="supplier.read" home={home}><Payments /></Guard>} />
+          <Route path="/owed" element={<Guard permission="supplier.read" home={home}><Owed /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
           <Route
