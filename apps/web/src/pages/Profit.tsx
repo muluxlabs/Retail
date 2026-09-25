@@ -18,6 +18,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import { ReportTabs } from '../components/ReportTabs.js';
 import { api, type SalesStatement } from '../lib/api.js';
 import { BarList, ChartCard, Delta, KpiTile, MiniTable, SeriesChart, VIZ, type SeriesPoint } from '../lib/charts.js';
 import { bucketHeading, bucketKeys, bucketLabel, fillBuckets, pctChange } from '../lib/chartMath.js';
@@ -210,6 +211,7 @@ export function Profit() {
 
   return (
     <div className="space-y-4">
+      <ReportTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Sales and profit</h1>

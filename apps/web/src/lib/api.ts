@@ -166,6 +166,60 @@ export interface SalesReport {
   byPayment: { paymentTypeId: string; name: string; receipts: number; amount: number }[];
 }
 
+export type ItemStatus = 'out_of_stock' | 'not_selling' | 'fast' | 'steady' | 'slow';
+
+export interface ItemRow {
+  productId: string;
+  sku: string;
+  productName: string;
+  categoryName: string;
+  opening: number;
+  received: number;
+  transfersIn: number;
+  transfersOut: number;
+  adjustments: number;
+  sold: number;
+  closing: number;
+  sellThroughPercent: number | null;
+  perDay: number;
+  perWeek: number;
+  daysOfCover: number | null;
+  lastSold: string | null;
+  net: number;
+  cost: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  status: ItemStatus;
+}
+
+export interface ItemReport {
+  timezone: string;
+  period: { from: string; to: string; days: number };
+  summary: {
+    items: number;
+    itemsSold: number;
+    opening: number;
+    received: number;
+    sold: number;
+    closing: number;
+    sellThroughPercent: number | null;
+    outOfStock: number;
+    notSelling: number;
+    fast: number;
+    steady: number;
+    slow: number;
+  };
+  items: ItemRow[];
+}
+
+export interface ItemHistory {
+  product: { productId: string; sku: string; productName: string; categoryName: string | null };
+  timezone: string;
+  opening: number;
+  series: { bucket: string; received: number; sold: number; other: number; closing: number }[];
+  totals: { received: number; sold: number; net: number; cost: number; grossProfit: number };
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -818,6 +872,14 @@ export const api = {
 
   sales: (params: { branchId?: string; from?: string; to?: string; q?: string; limit?: number; offset?: number } = {}) =>
     request<{ items: SaleSummary[]; limit: number; offset: number }>(`/api/sales${qs(params)}`),
+
+  itemReport: (params: { from: string; to: string; branchId?: string; categoryId?: string; search?: string }) =>
+    request<ItemReport>(`/api/reports/items${qs({ ...params })}`),
+
+  itemHistory: (
+    id: string,
+    params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month'; branchId?: string },
+  ) => request<ItemHistory>(`/api/reports/items/${id}/history${qs({ ...params })}`),
 
   businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
 

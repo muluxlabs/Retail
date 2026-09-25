@@ -9,6 +9,7 @@
 import { useState } from 'react';
 
 import { ReceiptDialog } from '../components/Receipt.js';
+import { ReportTabs } from '../components/ReportTabs.js';
 import { api, ApiError, type Receipt } from '../lib/api.js';
 import { Button, Card, Empty, ErrorNote, Spinner, money, useAsync } from '../lib/ui.js';
 
@@ -53,6 +54,7 @@ export function Sales() {
 
   return (
     <div className="space-y-4">
+      <ReportTabs />
       <div>
         <h1 className="text-lg font-semibold tracking-tight">Sales receipts</h1>
         <p className="text-ink-500 mt-0.5 text-[12.5px]">

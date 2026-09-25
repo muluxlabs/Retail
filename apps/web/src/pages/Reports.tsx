@@ -16,6 +16,7 @@
 
 import { useMemo, useState } from 'react';
 
+import { ReportTabs } from '../components/ReportTabs.js';
 import { api, type MovementReport, type Product } from '../lib/api.js';
 import {
   BarList,
@@ -175,11 +176,12 @@ export function Reports() {
 
   return (
     <div className="space-y-4">
+      <ReportTabs />
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Reports</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Stock movement</h1>
         <p className="text-ink-500 mt-0.5 text-[12.5px]">
-          Sales (in units), purchases (in cost), and stock activity for any period - pick a preset
-          or choose your own dates.
+          Units sold, purchases at cost, transfers, write-offs and adjustments for any period. For money -
+          sales, cost of sales and profit - see Sales and profit.
         </p>
       </div>
 

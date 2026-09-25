@@ -8,6 +8,7 @@ import { Cash } from './pages/Cash.js';
 import { Count } from './pages/Count.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { Exceptions } from './pages/Exceptions.js';
+import { Items } from './pages/Items.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { Prices } from './pages/Prices.js';
@@ -31,11 +32,11 @@ import { Users } from './pages/Users.js';
  * people who sign in actually do every day, and the exception queue exists
  * to catch what these two get wrong.
  */
-const NAV = [
+const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
+
+const NAV: { to: string; label: string; end?: boolean; permission: string | string[]; group?: string[] }[] = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
-  { to: '/sales', label: 'Sales', permission: 'sale.read' },
-  { to: '/profit', label: 'Profit', permission: 'sale.read' },
   { to: '/receive', label: 'Goods received', permission: 'movement.post' },
   { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
@@ -45,7 +46,8 @@ const NAV = [
   { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move'] },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
-  { to: '/reports', label: 'Reports', permission: 'stock.read' },
+  // One tab for every report; the screens inside are switched by the ReportTabs bar.
+  { to: '/reports', label: 'Reports', permission: ['sale.read', 'stock.read'], group: REPORT_PATHS },
   { to: '/products', label: 'Item master', permission: 'product.read' },
   { to: '/prices', label: 'Prices', permission: 'price.write' },
   { to: '/ledger', label: 'Stock ledger', permission: 'stock.read' },
@@ -53,6 +55,11 @@ const NAV = [
   { to: '/branches', label: 'Branches', permission: 'branch.manage' },
   { to: '/settings', label: 'Settings', permission: 'settings.manage' },
 ];
+
+/** Reports opens on sales and profit for anyone who may see sales, otherwise on stock movement. */
+function navTarget(item: { to: string; group?: string[] }, can: (p: string) => boolean): string {
+  return item.group !== undefined && can('sale.read') ? '/profit' : item.to;
+}
 
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
   return Array.isArray(permission) ? permission.some(can) : can(permission);
@@ -113,11 +120,11 @@ export function App() {
             {visible.map((item) => (
               <NavLink
                 key={item.to}
-                to={item.to}
+                to={navTarget(item, can)}
                 end={item.end ?? false}
                 className={({ isActive }) =>
                   `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition xl:px-1.5 2xl:px-2.5 ${
-                    isActive
+                    isActive || (item.group?.includes(location.pathname) ?? false)
                       ? 'bg-ink-100 text-ink-900'
                       : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
                   }`
@@ -155,12 +162,12 @@ export function App() {
             {visible.map((item) => (
               <NavLink
                 key={item.to}
-                to={item.to}
+                to={navTarget(item, can)}
                 end={item.end ?? false}
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
                   `border-ink-100 block border-b px-5 py-3 text-[13.5px] font-medium ${
-                    isActive ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
+                    isActive || (item.group?.includes(location.pathname) ?? false) ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
                   }`
                 }
               >
@@ -178,6 +185,7 @@ export function App() {
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
           <Route path="/sales" element={<Guard permission="sale.read" home={home}><Sales /></Guard>} />
           <Route path="/profit" element={<Guard permission="sale.read" home={home}><Profit /></Guard>} />
+          <Route path="/items" element={<Guard permission="sale.read" home={home}><Items /></Guard>} />
           <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
