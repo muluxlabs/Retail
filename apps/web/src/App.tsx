@@ -10,9 +10,11 @@ import { Dashboard } from './pages/Dashboard.js';
 import { Exceptions } from './pages/Exceptions.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
+import { Prices } from './pages/Prices.js';
 import { Products } from './pages/Products.js';
 import { Receive } from './pages/Receive.js';
 import { Reports } from './pages/Reports.js';
+import { Sales } from './pages/Sales.js';
 import { Sell } from './pages/Sell.js';
 import { Settings } from './pages/Settings.js';
 import { Stock } from './pages/Stock.js';
@@ -31,6 +33,7 @@ import { Users } from './pages/Users.js';
 const NAV = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
+  { to: '/sales', label: 'Sales', permission: 'sale.read' },
   { to: '/receive', label: 'Goods received', permission: 'movement.post' },
   { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
@@ -42,6 +45,7 @@ const NAV = [
   { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
   { to: '/reports', label: 'Reports', permission: 'stock.read' },
   { to: '/products', label: 'Item master', permission: 'product.read' },
+  { to: '/prices', label: 'Prices', permission: 'price.write' },
   { to: '/ledger', label: 'Stock ledger', permission: 'stock.read' },
   { to: '/users', label: 'Staff', permission: 'user.read' },
   { to: '/branches', label: 'Branches', permission: 'branch.manage' },
@@ -91,7 +95,7 @@ export function App() {
                 <path fill="currentColor" d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z" />
               </svg>
             </div>
-            <div className="leading-none">
+            <div className="leading-none max-sm:block xl:max-2xl:hidden">
               <div className="text-[13px] font-semibold tracking-tight whitespace-nowrap">Retail Operations</div>
               <div className="text-ink-400 mt-0.5 hidden text-[10.5px] whitespace-nowrap 2xl:block">
                 Multi-branch control
@@ -110,7 +114,7 @@ export function App() {
                 to={item.to}
                 end={item.end ?? false}
                 className={({ isActive }) =>
-                  `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition 2xl:px-2.5 ${
+                  `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition xl:px-1.5 2xl:px-2.5 ${
                     isActive
                       ? 'bg-ink-100 text-ink-900'
                       : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
@@ -170,6 +174,7 @@ export function App() {
         <Routes>
           <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
+          <Route path="/sales" element={<Guard permission="sale.read" home={home}><Sales /></Guard>} />
           <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
@@ -185,6 +190,7 @@ export function App() {
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
+          <Route path="/prices" element={<Guard permission="price.write" home={home}><Prices /></Guard>} />
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
           <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
           <Route path="/branches" element={<Guard permission="branch.manage" home={home}><Branches /></Guard>} />

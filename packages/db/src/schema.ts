@@ -126,6 +126,8 @@ export interface ProductPackTable {
   qty_base: number;
   is_default_sell: ColumnType<boolean, boolean | undefined, boolean>;
   is_default_buy: ColumnType<boolean, boolean | undefined, boolean>;
+  /** What one pack sells for. NULL means not priced yet, and it cannot be sold. */
+  sell_price: ColumnType<number | null, number | null | undefined, number | null>;
 }
 
 export interface BarcodeTable {
@@ -305,6 +307,7 @@ export interface TransferLineTable {
 export type CashPointKind = 'till' | 'safe' | 'petty' | 'bank';
 
 export type CashReason =
+  | 'sales_receipts'
   | 'opening_balance'
   | 'float_issue'
   | 'float_return'
@@ -370,6 +373,70 @@ export interface SchemaMigrationTable {
   applied_at: Timestamp;
 }
 
+export interface PaymentTypeTable {
+  id: string;
+  name: string;
+  is_cash: ColumnType<boolean, boolean | undefined, boolean>;
+  at_till: ColumnType<boolean, boolean | undefined, boolean>;
+  for_suppliers: ColumnType<boolean, boolean | undefined, boolean>;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  sort_order: ColumnType<number, number | undefined, number>;
+}
+
+/** Gapless per-branch document numbering. Incremented inside the document's own transaction. */
+export interface DocumentCounterTable {
+  branch_id: string;
+  doc_kind: string;
+  last_no: ColumnType<number, number | undefined, number>;
+}
+
+/**
+ * A sales receipt. Immutable (a trigger refuses UPDATE and DELETE): a mistake is
+ * corrected by a return or void document, never by editing this.
+ */
+export interface SaleTable {
+  id: string;
+  receipt_no: string;
+  branch_id: string;
+  terminal_id: string | null;
+  cash_point_id: string | null;
+  cashier_id: string;
+  occurred_at: ColumnType<Date, Date | string, never>;
+  recorded_at: Timestamp;
+  gross_total: number;
+  discount_total: ColumnType<number, number | undefined, never>;
+  net_total: number;
+  tendered_total: number;
+  change_given: ColumnType<number, number | undefined, never>;
+  currency: ColumnType<string, string | undefined, never>;
+}
+
+export interface SaleLineTable {
+  id: Generated<string>;
+  sale_id: string;
+  line_no: number;
+  product_id: string;
+  pack_id: string;
+  qty_packs: number;
+  qty_base: number;
+  list_price: number | null;
+  unit_price: number;
+  discount: ColumnType<number, number | undefined, never>;
+  line_total: number;
+  /** Weighted-average cost per BASE unit at the moment of sale; NULL if nothing costed was ever received. */
+  unit_cost: number | null;
+  movement_seq: number;
+}
+
+export interface SalePaymentTable {
+  id: Generated<string>;
+  sale_id: string;
+  payment_type_id: string;
+  amount: number;
+  tendered: number;
+  reference: string | null;
+}
+
 export interface Database {
   branch: BranchTable;
   terminal: TerminalTable;
@@ -379,6 +446,11 @@ export interface Database {
   product_category: ProductCategoryTable;
   product: ProductTable;
   product_pack: ProductPackTable;
+  payment_type: PaymentTypeTable;
+  document_counter: DocumentCounterTable;
+  sale: SaleTable;
+  sale_line: SaleLineTable;
+  sale_payment: SalePaymentTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

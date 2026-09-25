@@ -47,6 +47,15 @@ const STATUS_BY_CODE: Record<string, number> = {
   CONFIRMATION_MISMATCH: 422,
   // Scoped to one branch, reaching for another.
   OUTSIDE_BRANCH_SCOPE: 403,
+  // The basket or the payments are not a valid sale.
+  INVALID_BASKET: 422,
+  PAYMENT_MISMATCH: 422,
+  // Nothing to charge: the product has no selling price.
+  PRICE_MISSING: 422,
+  // A price or discount away from the list, without the authority to give one.
+  PRICE_OVERRIDE_REQUIRED: 403,
+  // A branch with tills must say which one took the cash.
+  TILL_REQUIRED: 422,
 };
 
 export interface ErrorBody {

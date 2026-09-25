@@ -86,9 +86,13 @@ export async function resolveBarcode(
 ): Promise<{
   code: string;
   packId: string;
+  packLabel: string;
   productId: string;
   qtyBase: number;
   productName: string;
+  sku: string;
+  /** null when the pack has no selling price yet. */
+  sellPrice: number | null;
   reviewState: 'approved' | 'pending';
 }> {
   const row = await db
@@ -98,55 +102,19 @@ export async function resolveBarcode(
     .select([
       'barcode.code as code',
       'product_pack.id as packId',
+      'product_pack.label as packLabel',
       'product_pack.product_id as productId',
       'product_pack.qty_base as qtyBase',
+      'product_pack.sell_price as sellPrice',
       'product.name as productName',
+      'product.sku as sku',
       'product.review_state as reviewState',
     ])
     .where('barcode.code', '=', code)
     .executeTakeFirst();
 
   if (row === undefined) throw new UnlistedBarcode(code);
-  return row;
-}
-
-/**
- * Resolve a product+pack directly, bypassing the barcode table.
- *
- * The till's product picker (search by name, not by code) and a just
- * quick-added item that has no barcode both need to sell without one -
- * `resolveBarcode` cannot serve either, since there is no code to look up.
- */
-export async function resolvePack(
-  db: Db,
-  productId: string,
-  packId: string,
-): Promise<{
-  packId: string;
-  productId: string;
-  qtyBase: number;
-  productName: string;
-  reviewState: 'approved' | 'pending';
-}> {
-  const row = await db
-    .selectFrom('product_pack')
-    .innerJoin('product', 'product.id', 'product_pack.product_id')
-    .select([
-      'product_pack.id as packId',
-      'product_pack.product_id as productId',
-      'product_pack.qty_base as qtyBase',
-      'product.name as productName',
-      'product.review_state as reviewState',
-    ])
-    .where('product_pack.id', '=', packId)
-    .where('product_pack.product_id', '=', productId)
-    .executeTakeFirst();
-
-  if (row === undefined) {
-    const { InvalidMasterData } = await import('@retail-ops/domain');
-    throw new InvalidMasterData(`No pack ${packId} on product ${productId}`, { productId, packId });
-  }
-  return row;
+  return { ...row, sellPrice: row.sellPrice === null ? null : Number(row.sellPrice) };
 }
 
 /**
@@ -315,89 +283,6 @@ export async function postMovementInTx(
     qtyAfter: await onHand(tx, input.productId, input.branchId),
     backdated,
   };
-}
-
-export type SellInput = {
-  qtyPacks: number;
-  branchId: string;
-  actorId: string;
-  terminalId?: string | null | undefined;
-  eventId?: string | undefined;
-  overrideNegative?: boolean | undefined;
-  overrideBy?: string | null | undefined;
-} & ({ barcode: string; productId?: undefined; packId?: undefined } | { barcode?: undefined; productId: string; packId: string });
-
-/**
- * A till sale. Converts packs to base units at the edge, then posts.
- *
- * Resolves either by barcode (a scan or a typed code) or directly by
- * productId+packId (the cashier picked it from the searchable list, or it
- * was just quick-added and has no code yet) - the two are otherwise
- * identical from here down, which is the point: one sale, two ways in.
- *
- * An override is permitted but never silent: it writes an open exception with
- * the authorising manager named on it.
- */
-export async function sell(db: Db, input: SellInput): Promise<PostMovementResult> {
-  const binding =
-    input.barcode !== undefined
-      ? await resolveBarcode(db, input.barcode)
-      : await resolvePack(db, input.productId, input.packId);
-  const qtyBase = -Math.abs(packsToBase(input.qtyPacks, binding.qtyBase));
-
-  const base: PostMovementInput = {
-    productId: binding.productId,
-    branchId: input.branchId,
-    qtyBase,
-    reason: 'sale',
-    actorId: input.actorId,
-    docType: 'SALE',
-    terminalId: input.terminalId ?? null,
-    ...(input.eventId === undefined ? {} : { eventId: input.eventId }),
-  };
-
-  // A pending product was quick-added at the till moments ago, not received
-  // through the normal path - it has no stock baseline anyone can trust yet,
-  // so it has none on the ledger either. Blocking its very first sale on the
-  // guard that exists to catch someone selling stock the ledger says does
-  // not exist would defeat the entire point of letting a cashier add it and
-  // keep going. The `unreviewed_product` exception already raised at
-  // quick-add is the control here; a second one on every sale of it would
-  // only be noise.
-  if (binding.reviewState === 'pending') {
-    return postMovement(db, { ...base, allowNegative: true });
-  }
-
-  try {
-    return await postMovement(db, base);
-  } catch (error) {
-    const { NegativeStockBlocked } = await import('@retail-ops/domain');
-    if (!(error instanceof NegativeStockBlocked) || input.overrideNegative !== true) throw error;
-
-    const result = await postMovement(db, { ...base, allowNegative: true });
-    await db
-      .insertInto('exception_event')
-      .values({
-        event_id: crypto.randomUUID(),
-        kind: 'negative_stock_override',
-        branch_id: input.branchId,
-        terminal_id: input.terminalId ?? null,
-        actor_id: input.actorId,
-        product_id: binding.productId,
-        detail: JSON.stringify({
-          movementSeq: result.seq,
-          barcode: input.barcode ?? null,
-          authorisedBy: input.overrideBy ?? null,
-          available: error.detail['available'] ?? null,
-          requested: error.detail['requested'] ?? null,
-        }),
-        value_impact: null,
-        currency: null,
-        occurred_at: new Date(),
-      })
-      .execute();
-    return result;
-  }
 }
 
 export interface CountLineInput {

@@ -11,10 +11,11 @@
  * person actually looked at.
  */
 
-import { OutsideBranchScope, StockResetNotConfirmed } from '@retail-ops/domain';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { StockResetNotConfirmed } from '@retail-ops/domain';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { assertInScope } from '../scope.js';
 import { previewBranchReset, resetBranchStock } from '../services/stockReset.js';
 import { parseBody, parseParams } from '../validation.js';
 
@@ -28,12 +29,6 @@ const resetBody = z.object({
   /** `resettable` from the preview they confirmed. */
   expectedPositions: z.number().int().min(0),
 });
-
-/** Empty branchIds means group-wide; otherwise the branch must be one of theirs. */
-function assertInScope(request: FastifyRequest, branchId: string): void {
-  const scoped = request.user?.branchIds ?? [];
-  if (scoped.length > 0 && !scoped.includes(branchId)) throw new OutsideBranchScope(branchId);
-}
 
 export async function registerStockResetRoutes(app: FastifyInstance): Promise<void> {
   async function loadBranch(id: string) {

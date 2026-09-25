@@ -53,6 +53,8 @@ function SettingItem({ row, onChanged }: { row: SettingRow; onChanged: () => voi
   const [value, setValue] = useState(row.value);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Numbers (limits) get a small box; text (the business name on receipts) a wide one.
+  const isText = !/^[\d.\s-]*$/.test(row.value) || row.value === '';
 
   async function save() {
     setBusy(true);
@@ -90,7 +92,7 @@ function SettingItem({ row, onChanged }: { row: SettingRow; onChanged: () => voi
               autoFocus
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              className="tnum border-ink-200 focus:border-accent-500 w-28 rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none"
+              className={`tnum border-ink-200 focus:border-accent-500 rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none ${isText ? 'w-64 max-w-full' : 'w-28'}`}
             />
             <Button variant="primary" onClick={() => void save()} disabled={busy}>
               {busy ? <Spinner /> : null}
@@ -109,7 +111,11 @@ function SettingItem({ row, onChanged }: { row: SettingRow; onChanged: () => voi
           </div>
         ) : (
           <div className="flex items-center gap-2.5">
-            <span className="tnum text-[15px] font-semibold">{row.value}</span>
+            {row.value === '' ? (
+              <span className="text-ink-400 text-[13px] italic">blank</span>
+            ) : (
+              <span className={`tnum font-semibold ${isText ? 'max-w-64 truncate text-[13px]' : 'text-[15px]'}`}>{row.value}</span>
+            )}
             <Button onClick={() => setEditing(true)}>Edit</Button>
           </div>
         )}

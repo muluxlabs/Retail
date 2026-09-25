@@ -8,11 +8,12 @@
  */
 
 import type { Database } from '@retail-ops/db';
+import { isMoney } from '@retail-ops/domain';
 import type { FastifyInstance } from 'fastify';
 import type { Transaction } from 'kysely';
 import { z } from 'zod';
 
-import { parseQuery, parseParams, parseBody } from '../validation.js';
+import { parseQuery, parseParams, parseBody, queryBool } from '../validation.js';
 
 /**
  * Clear the `unreviewed_product` exception this product's quick-add raised,
@@ -45,10 +46,17 @@ async function clearReviewException(
     .execute();
 }
 
+/** A selling price: real money, or null to say "not priced". */
+const price = z
+  .number()
+  .min(0)
+  .refine(isMoney, 'A price has at most two decimal places.')
+  .nullable();
+
 const listQuery = z.object({
   search: z.string().trim().min(1).max(200).optional(),
   categoryId: z.uuid().optional(),
-  includeInactive: z.coerce.boolean().default(false),
+  includeInactive: queryBool,
   reviewState: z.enum(['approved', 'pending']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
@@ -70,6 +78,7 @@ const createProduct = z.object({
         isDefaultSell: z.boolean().default(false),
         isDefaultBuy: z.boolean().default(false),
         barcode: z.string().trim().min(1).max(32).optional(),
+        sellPrice: price.optional(),
       }),
     )
     .min(1, 'A product needs at least one pack, even if it is just a single.'),
@@ -92,6 +101,7 @@ const createPack = z.object({
   isDefaultSell: z.boolean().default(false),
   isDefaultBuy: z.boolean().default(false),
   barcode: z.string().trim().min(1).max(32).optional(),
+  sellPrice: price.optional(),
 });
 
 const updatePack = z.object({
@@ -99,6 +109,7 @@ const updatePack = z.object({
   qtyBase: z.number().positive().optional(),
   isDefaultSell: z.boolean().optional(),
   isDefaultBuy: z.boolean().optional(),
+  sellPrice: price.optional(),
 });
 
 const attachBarcode = z.object({
@@ -108,6 +119,8 @@ const attachBarcode = z.object({
 
 const quickAddProduct = z.object({
   name: z.string().trim().min(1).max(200),
+  /** What the customer is being charged. The manager reviewing the item confirms or corrects it. */
+  sellPrice: price.optional(),
   barcode: z.string().trim().min(1).max(32).optional(),
   branchId: z.uuid(),
   terminalId: z.uuid().nullable().default(null),
@@ -126,6 +139,21 @@ const mergeProduct = z.object({
   targetProductId: z.uuid(),
   note: z.string().trim().max(1000).optional(),
 });
+
+/** Setting a price is its own capability, on top of being allowed to edit products. */
+function assertMayPrice(request: { user: { permissions: Set<string> } | null }, wants: boolean): void {
+  if (wants && request.user?.permissions.has('price.write') !== true) {
+    throw new NotPermittedPrice();
+  }
+}
+
+class NotPermittedPrice extends Error {
+  readonly statusCode = 403;
+  readonly code = 'NOT_PERMITTED';
+  constructor() {
+    super('Setting a selling price needs the price.write permission.');
+  }
+}
 
 export async function registerProductRoutes(app: FastifyInstance): Promise<void> {
   /** List the item master, newest first, with pack and barcode counts. */
@@ -178,6 +206,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
               'product_pack.qty_base as qtyBase',
               'product_pack.is_default_sell as isDefaultSell',
               'product_pack.is_default_buy as isDefaultBuy',
+              'product_pack.sell_price as sellPrice',
               'barcode.code as barcode',
             ])
             .where('product_pack.product_id', 'in', ids)
@@ -242,6 +271,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         'product_pack.qty_base as qtyBase',
         'product_pack.is_default_sell as isDefaultSell',
         'product_pack.is_default_buy as isDefaultBuy',
+        'product_pack.sell_price as sellPrice',
         'barcode.code as barcode',
         'barcode.symbology',
       ])
@@ -304,6 +334,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
     if (actor === null) {
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
     }
+    assertMayPrice(request, body.packs.some((p) => p.sellPrice !== undefined && p.sellPrice !== null));
 
     const created = await app.db.transaction().execute(async (tx) => {
       const product = await tx
@@ -333,6 +364,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
             qty_base: pack.qtyBase,
             is_default_sell: pack.isDefaultSell,
             is_default_buy: pack.isDefaultBuy,
+            sell_price: pack.sellPrice ?? null,
           })
           .returning('id')
           .executeTakeFirstOrThrow();
@@ -449,6 +481,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
       if (actor === null) {
         return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
       }
+      assertMayPrice(request, body.sellPrice !== undefined && body.sellPrice !== null);
 
       const product = await app.db
         .selectFrom('product')
@@ -468,6 +501,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
             qty_base: body.qtyBase,
             is_default_sell: body.isDefaultSell,
             is_default_buy: body.isDefaultBuy,
+            sell_price: body.sellPrice ?? null,
           })
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -520,6 +554,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
       if (actor === null) {
         return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
       }
+      assertMayPrice(request, body.sellPrice !== undefined);
 
       const before = await app.db
         .selectFrom('product_pack')
@@ -540,6 +575,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
             ...(body.qtyBase !== undefined ? { qty_base: body.qtyBase } : {}),
             ...(body.isDefaultSell !== undefined ? { is_default_sell: body.isDefaultSell } : {}),
             ...(body.isDefaultBuy !== undefined ? { is_default_buy: body.isDefaultBuy } : {}),
+            ...(body.sellPrice !== undefined ? { sell_price: body.sellPrice } : {}),
           })
           .where('id', '=', packId)
           .returningAll()
@@ -549,7 +585,8 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
           .insertInto('audit_log')
           .values({
             event_id: crypto.randomUUID(),
-            action_code: 'PACK_UPDATED',
+            // A price change is the one edit an auditor asks about by name.
+            action_code: body.sellPrice !== undefined && body.sellPrice !== (before.sell_price === null ? null : Number(before.sell_price)) ? 'PRICE_CHANGED' : 'PACK_UPDATED',
             actor_id: actor.personId,
             terminal_id: null,
             branch_id: null,
@@ -729,6 +766,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
             qty_base: 1,
             is_default_sell: true,
             is_default_buy: true,
+            sell_price: body.sellPrice ?? null,
           })
           .returning(['id', 'qty_base'])
           .executeTakeFirstOrThrow();

@@ -118,3 +118,29 @@
     padding: 0 !important;
   }
 }
+
+/*
+ * Receipt printing: only the receipt reaches the paper, at the roll width set
+ * by the @page rule the print button injects. The receipt is portalled to
+ * <body>, beside #root, so hiding #root leaves it alone on the page.
+ */
+@media print {
+  body.print-receipt #root {
+    display: none !important;
+  }
+  body.print-receipt .receipt-portal {
+    position: static !important;
+    display: block !important;
+    background: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  body.print-receipt .receipt-portal > div {
+    display: block !important;
+    margin: 0 !important;
+  }
+  body.print-receipt .receipt-portal > div > div {
+    box-shadow: none !important;
+    padding: 2mm !important;
+  }
+}

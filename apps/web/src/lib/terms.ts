@@ -82,6 +82,11 @@ export const STOCK_REASON_TERMS: Record<string, Term> = {
 
 /** Cash movement reasons. Keys mirror the cash_reason enum. */
 export const CASH_REASON_TERMS: Record<string, Term> = {
+  sales_receipts: {
+    label: 'Cash sales',
+    short: 'Cash sales',
+    meaning: 'Cash taken from customers at the till, net of any change given.',
+  },
   opening_balance: {
     label: 'Opening cash introduced',
     short: 'Opening cash',

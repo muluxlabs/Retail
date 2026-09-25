@@ -12,12 +12,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { parseBody, parseParams, parseQuery } from '../validation.js';
+import { parseBody, parseParams, parseQuery, queryBool } from '../validation.js';
 
 const DEFAULT_BRANCH_CAP = 20;
 
 const listBranchesQuery = z.object({
-  includeInactive: z.coerce.boolean().default(false),
+  includeInactive: queryBool,
 });
 
 const idParams = z.object({ id: z.uuid() });

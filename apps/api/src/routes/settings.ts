@@ -34,8 +34,42 @@ const SETTINGS: Record<string, SettingDef> = {
   },
 };
 
+const text = (label: string, max: number): SettingDef['parse'] => (raw) =>
+  raw.length <= max ? { ok: true } : { ok: false, message: `${label} can be at most ${max} characters.` };
+
+SETTINGS['business_name'] = {
+  label: 'Business name',
+  description: 'Printed at the top of every receipt.',
+  parse: (raw) => (raw.length >= 1 && raw.length <= 80 ? { ok: true } : { ok: false, message: 'Give the business a name (up to 80 characters).' }),
+};
+SETTINGS['business_address'] = {
+  label: 'Business address',
+  description: 'Printed under the name on receipts. Leave blank to print nothing.',
+  parse: text('The address', 160),
+};
+SETTINGS['business_phone'] = {
+  label: 'Business phone',
+  description: 'Printed on receipts. Leave blank to print nothing.',
+  parse: text('The phone number', 40),
+};
+SETTINGS['business_tin'] = {
+  label: 'Tax identification number',
+  description: 'Your TIN / VAT registration number, printed on receipts. Leave blank if not registered.',
+  parse: text('The number', 40),
+};
+SETTINGS['receipt_footer'] = {
+  label: 'Receipt footer',
+  description: 'A line printed at the bottom of every receipt, such as a thank-you or a returns policy.',
+  parse: text('The footer', 200),
+};
+SETTINGS['receipt_width_mm'] = {
+  label: 'Receipt paper width (mm)',
+  description: 'The width of the roll in your receipt printer: 58 or 80.',
+  parse: (raw) => (raw === '58' || raw === '80' ? { ok: true } : { ok: false, message: 'Paper width must be 58 or 80.' }),
+};
+
 const keyParams = z.object({ key: z.string().trim().min(1).max(100) });
-const updateBody = z.object({ value: z.string().trim().min(1).max(500) });
+const updateBody = z.object({ value: z.string().trim().max(500) });
 
 export async function registerSettingsRoutes(app: FastifyInstance): Promise<void> {
   /** Every known setting, with its current value and who last touched it. */

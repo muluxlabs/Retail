@@ -20,6 +20,7 @@ import { useState } from 'react';
 
 import { api, ApiError, type Category, type Pack } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { parseMoney } from '../lib/basketMath.js';
 import { stockReason } from '../lib/terms.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
@@ -148,8 +149,19 @@ export function Products() {
                         )}
                       </div>
                     </div>
-                    <div className="text-ink-400 shrink-0 text-[11.5px]">
-                      {product.packs.length} pack{product.packs.length === 1 ? '' : 's'}
+                    <div className="shrink-0 text-right text-[11.5px]">
+                      {(() => {
+                        const sellPack = product.packs.find((p) => p.isDefaultSell) ?? product.packs[0];
+                        if (sellPack === undefined) return null;
+                        return sellPack.sellPrice === null ? (
+                          <Badge tone="warn">no price</Badge>
+                        ) : (
+                          <span className="tnum text-ink-800 font-medium">{money(sellPack.sellPrice)}</span>
+                        );
+                      })()}
+                      <div className="text-ink-400">
+                        {product.packs.length} pack{product.packs.length === 1 ? '' : 's'}
+                      </div>
                     </div>
                   </button>
 
@@ -180,6 +192,7 @@ interface DraftPack {
   isDefaultSell: boolean;
   isDefaultBuy: boolean;
   barcode: string;
+  sellPrice: string;
 }
 
 let draftKey = 0;
@@ -190,6 +203,7 @@ const newDraftPack = (overrides: Partial<DraftPack> = {}): DraftPack => ({
   isDefaultSell: false,
   isDefaultBuy: false,
   barcode: '',
+  sellPrice: '',
   ...overrides,
 });
 
@@ -202,6 +216,8 @@ function CreateProductForm({
   onCreated: (id: string) => void;
   onCancel: () => void;
 }) {
+  const { can } = useAuth();
+  const mayPrice = can('price.write');
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [baseUom, setBaseUom] = useState('each');
@@ -230,6 +246,10 @@ function CreateProductForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (packs.some((p) => p.sellPrice.trim() !== '' && parseMoney(p.sellPrice) === null)) {
+      setError('A selling price has at most two decimal places, like 2.50.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -245,6 +265,7 @@ function CreateProductForm({
           isDefaultSell: p.isDefaultSell,
           isDefaultBuy: p.isDefaultBuy,
           ...(p.barcode.trim() === '' ? {} : { barcode: p.barcode.trim() }),
+          ...(mayPrice && p.sellPrice.trim() !== '' ? { sellPrice: Number(p.sellPrice) } : {}),
         })),
       });
       onCreated(created.id);
@@ -325,7 +346,7 @@ function CreateProductForm({
             {packs.map((pack) => (
               <div
                 key={pack.key}
-                className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1fr_100px_auto_auto_1fr_auto] sm:gap-2"
+                className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1fr_90px_100px_auto_auto_1fr_auto] sm:gap-2"
               >
                 <input
                   required
@@ -343,6 +364,15 @@ function CreateProductForm({
                   value={pack.qtyBase}
                   onChange={(e) => updatePack(pack.key, { qtyBase: e.target.value })}
                   className="tnum text-[12.5px] outline-none"
+                />
+                <input
+                  inputMode="decimal"
+                  placeholder={mayPrice ? 'Price' : 'Price (no access)'}
+                  disabled={!mayPrice}
+                  aria-label="Selling price"
+                  value={pack.sellPrice}
+                  onChange={(e) => updatePack(pack.key, { sellPrice: e.target.value })}
+                  className="tnum text-[12.5px] outline-none disabled:opacity-50"
                 />
                 <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
                   <input
@@ -713,16 +743,29 @@ function PackRow({
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(pack.label);
   const [qtyBase, setQtyBase] = useState(String(pack.qtyBase));
+  const { can } = useAuth();
+  const mayPrice = can('price.write');
+  const [price, setPrice] = useState(pack.sellPrice === null ? '' : pack.sellPrice.toFixed(2));
   const [addingBarcode, setAddingBarcode] = useState(false);
   const [newBarcode, setNewBarcode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save() {
+    const newPrice = price.trim() === '' ? null : parseMoney(price);
+    if (price.trim() !== '' && newPrice === null) {
+      setError('A price has at most two decimal places.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.updatePack(productId, pack.id, { label, qtyBase: Number(qtyBase) });
+      await api.updatePack(productId, pack.id, {
+        label,
+        qtyBase: Number(qtyBase),
+        // Only send a price that changed, and only to someone allowed to set one.
+        ...(mayPrice && newPrice !== null && newPrice !== pack.sellPrice ? { sellPrice: newPrice } : {}),
+      });
       setEditing(false);
       onChanged();
     } catch (e) {
@@ -776,6 +819,16 @@ function PackRow({
           onChange={(e) => setQtyBase(e.target.value)}
           className="tnum w-16 outline-none"
         />
+        {mayPrice && (
+          <input
+            inputMode="decimal"
+            value={price}
+            placeholder="Price"
+            aria-label="Selling price"
+            onChange={(e) => setPrice(e.target.value)}
+            className="tnum w-20 outline-none"
+          />
+        )}
         <Button onClick={() => void save()} disabled={busy}>
           Save
         </Button>
@@ -796,6 +849,11 @@ function PackRow({
       </span>
       {pack.isDefaultSell && <Badge tone="good">sell</Badge>}
       {pack.isDefaultBuy && <Badge tone="info">buy</Badge>}
+      {pack.sellPrice === null ? (
+        <Badge tone="warn">no price</Badge>
+      ) : (
+        <span className="tnum text-ink-800 font-medium">{money(pack.sellPrice)}</span>
+      )}
 
       <span className="ml-auto flex items-center gap-1.5">
         {pack.barcode !== null ? (
@@ -863,17 +921,25 @@ function AddPackForm({
   const [label, setLabel] = useState('');
   const [qtyBase, setQtyBase] = useState('1');
   const [barcode, setBarcode] = useState('');
+  const { can } = useAuth();
+  const mayPrice = can('price.write');
+  const [price, setPrice] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (price.trim() !== '' && parseMoney(price) === null) {
+      setError('A price has at most two decimal places.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await api.addPack(productId, {
         label,
         qtyBase: Number(qtyBase),
+        ...(mayPrice && price.trim() !== '' ? { sellPrice: Number(price) } : {}),
         ...(barcode.trim() === '' ? {} : { barcode: barcode.trim() }),
       });
       onDone();
@@ -906,6 +972,16 @@ function AddPackForm({
         onChange={(e) => setQtyBase(e.target.value)}
         className="tnum w-20 outline-none"
       />
+      {mayPrice && (
+        <input
+          inputMode="decimal"
+          placeholder="Price"
+          aria-label="Selling price"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          className="tnum w-20 outline-none"
+        />
+      )}
       <input
         placeholder="Scan or type barcode…"
         value={barcode}

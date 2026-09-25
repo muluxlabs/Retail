@@ -102,6 +102,8 @@ export interface Pack {
   isDefaultSell: boolean;
   isDefaultBuy: boolean;
   barcode: string | null;
+  /** List price for one of this pack; null = not priced yet, so it cannot be sold. */
+  sellPrice: number | null;
 }
 
 export interface Product {
@@ -117,6 +119,97 @@ export interface Product {
   packs: Pack[];
 }
 
+export interface PaymentType {
+  id: string;
+  name: string;
+  isCash: boolean;
+  atTill: boolean;
+  forSuppliers: boolean;
+}
+
+export interface Till {
+  id: string;
+  name: string;
+  terminalId: string | null;
+}
+
+export interface CheckoutBody {
+  saleId: string;
+  branchId: string;
+  cashPointId: string | null;
+  terminalId: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitPrice?: number; discount?: number }[];
+  payments: { paymentTypeId: string; amount: number; tendered?: number; reference?: string | null }[];
+  overrideNegative: boolean;
+}
+
+export interface ReceiptLine {
+  lineNo: number;
+  productId: string;
+  sku: string;
+  name: string;
+  packLabel: string;
+  qtyPacks: number;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+}
+
+export interface Receipt {
+  id: string;
+  receiptNo: string;
+  occurredAt: string;
+  branch: { id: string; code: string; name: string };
+  cashier: { id: string; name: string };
+  till: string | null;
+  currency: string;
+  lines: ReceiptLine[];
+  gross: number;
+  discount: number;
+  net: number;
+  tendered: number;
+  change: number;
+  payments: { type: string; isCash: boolean; amount: number; tendered: number; reference: string | null }[];
+  business: { name: string; address: string; phone: string; tin: string; footer: string; widthMm: number };
+}
+
+export interface SaleSummary {
+  id: string;
+  receiptNo: string;
+  occurredAt: string;
+  branchCode: string;
+  branchName: string;
+  cashierName: string;
+  net: number;
+  discount: number;
+  itemCount: number;
+  paidBy: string | null;
+}
+
+export interface PriceRow {
+  packId: string;
+  packLabel: string;
+  qtyBase: number;
+  sellPrice: number | null;
+  productId: string;
+  sku: string;
+  name: string;
+  categoryName: string | null;
+  barcode: string | null;
+  costPerPack: number | null;
+}
+
+export interface PriceList {
+  items: PriceRow[];
+  /** Items matching the filters (drives paging). */
+  total: number;
+  /** Every active item, filtered or not. */
+  catalogue: number;
+  unpriced: number;
+  limit: number;
+  offset: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -129,6 +222,7 @@ export interface NewPackInput {
   isDefaultSell?: boolean;
   isDefaultBuy?: boolean;
   barcode?: string;
+  sellPrice?: number;
 }
 
 export interface NewProductInput {
@@ -562,6 +656,7 @@ export const api = {
    */
   quickAddProduct: (body: {
     name: string;
+    sellPrice?: number;
     barcode?: string;
     branchId: string;
     terminalId?: string | null;
@@ -602,7 +697,7 @@ export const api = {
   updatePack: (
     productId: string,
     packId: string,
-    body: Partial<{ label: string; qtyBase: number; isDefaultSell: boolean; isDefaultBuy: boolean }>,
+    body: Partial<{ label: string; qtyBase: number; isDefaultSell: boolean; isDefaultBuy: boolean; sellPrice: number }>,
   ) =>
     request<unknown>(`/api/products/${productId}/packs/${packId}`, {
       method: 'PATCH',
@@ -649,21 +744,46 @@ export const api = {
 
   /** Resolve a scan to its product and pack multiplier. 404 if unlisted. */
   resolveBarcode: (code: string) =>
-    request<{ code: string; packId: string; productId: string; qtyBase: number; productName: string }>(
-      `/api/barcodes/${encodeURIComponent(code)}`,
-    ),
+    request<{
+      code: string;
+      packId: string;
+      productId: string;
+      qtyBase: number;
+      productName: string;
+      packLabel: string;
+      sku: string;
+      sellPrice: number | null;
+    }>(`/api/barcodes/${encodeURIComponent(code)}`),
 
-  /** A till sale, by barcode OR by a product+pack picked from the list. */
-  sell: (
-    body: {
-      qtyPacks: number;
-      branchId: string;
-      actorId: string;
-      overrideNegative?: boolean;
-      overrideBy?: string | null;
-    } & ({ barcode: string; productId?: undefined; packId?: undefined } | { barcode?: undefined; productId: string; packId: string }),
-  ) =>
-    request<{ seq: number; eventId: string; replayed: boolean; qtyAfter: number }>('/api/sales', {
+  // -- sales: baskets, receipts, prices -------------------------------------
+  paymentTypes: () => request<PaymentType[]>('/api/payment-types'),
+
+  tills: (branchId: string) => request<Till[]>(`/api/branches/${branchId}/tills`),
+
+  /** Check out a whole basket. The saleId makes a retry the same sale, not a second one. */
+  checkout: (body: CheckoutBody) =>
+    request<{ receipt: Receipt; replayed: boolean }>('/api/sales/checkout', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  receipt: (saleId: string) => request<Receipt>(`/api/sales/${saleId}`),
+
+  sales: (params: { branchId?: string; from?: string; to?: string; q?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: SaleSummary[]; limit: number; offset: number }>(`/api/sales${qs(params)}`),
+
+  priceList: (
+    params: { search?: string; categoryId?: string; missingOnly?: boolean; limit?: number; offset?: number } = {},
+  ) => request<PriceList>(`/api/price-list${qs(params)}`),
+
+  savePrices: (changes: { packId: string; sellPrice: number | null }[]) =>
+    request<{ updated: number; unchanged: number }>('/api/price-list', {
+      method: 'PUT',
+      body: JSON.stringify({ changes }),
+    }),
+
+  fillMissingPrices: (body: { markupPercent: number; roundTo: 0.01 | 0.05 | 0.1 | 0.5 | 1 }) =>
+    request<{ updated: number; skippedNoCost: number }>('/api/price-list/fill-missing', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

@@ -10,13 +10,13 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
-import { parseQuery } from '../validation.js';
+import { parseQuery, queryBool } from '../validation.js';
 
 const stockQuery = z.object({
   branchId: z.uuid().optional(),
   search: z.string().trim().min(1).max(200).optional(),
   /** Only rows at or below zero - the "selling negative" investigation. */
-  negativeOnly: z.coerce.boolean().default(false),
+  negativeOnly: queryBool,
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });

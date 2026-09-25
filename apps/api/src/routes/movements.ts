@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { parseBody } from '../validation.js';
-import { logUnlistedScan, postCount, postMovement, resolveBarcode, sell } from '../services/stock.js';
+import { logUnlistedScan, postCount, postMovement, resolveBarcode } from '../services/stock.js';
 
 const REASONS = [
   'grn',
@@ -51,26 +51,6 @@ const movementBody = z.object({
   // alone, bypassing the same control /api/sales correctly enforces.
 });
 
-const sellBody = z
-  .object({
-    eventId: z.uuid().optional(),
-    // Either a code (scanned or typed), or a product+pack picked straight
-    // from the searchable list - never both, never neither.
-    barcode: z.string().trim().min(1).max(32).optional(),
-    productId: z.uuid().optional(),
-    packId: z.uuid().optional(),
-    qtyPacks: z.number().positive(),
-    branchId: z.uuid(),
-    actorId: z.uuid(),
-    terminalId: z.uuid().nullable().default(null),
-    overrideNegative: z.boolean().default(false),
-    overrideBy: z.uuid().nullable().default(null),
-  })
-  .refine(
-    (v) => (v.barcode !== undefined) !== (v.productId !== undefined && v.packId !== undefined),
-    { message: 'Provide either a barcode, or a productId and packId - not both, not neither.' },
-  );
-
 const unlistedScanBody = z.object({
   code: z.string().trim().min(1).max(32),
   branchId: z.uuid(),
@@ -97,39 +77,9 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
     return reply.status(result.replayed ? 200 : 201).send(result);
   });
 
-  /** A till sale, by barcode, in packs. */
-  app.post('/sales', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
-    const body = parseBody(sellBody, request.body);
-
-    // Overriding the negative-stock guard is a separate capability from making
-    // a sale. Their stated problem is cashiers overriding "to their own
-    // benefit"; a cashier holding movement.post must not be able to do it
-    // alone, so the override is refused unless the caller also holds
-    // stock.override.
-    if (body.overrideNegative && request.user?.permissions.has('stock.override') !== true) {
-      return reply.status(403).send({
-        error: {
-          code: 'NOT_PERMITTED',
-          message: 'Overriding negative stock requires manager authorisation.',
-          detail: { permission: 'stock.override' },
-        },
-      });
-    }
-
-    const result = await sell(app.db, {
-      ...(body.barcode !== undefined
-        ? { barcode: body.barcode }
-        : { productId: body.productId!, packId: body.packId! }),
-      qtyPacks: body.qtyPacks,
-      branchId: body.branchId,
-      actorId: body.actorId,
-      terminalId: body.terminalId,
-      overrideNegative: body.overrideNegative,
-      overrideBy: body.overrideBy,
-      ...(body.eventId === undefined ? {} : { eventId: body.eventId }),
-    });
-    return reply.status(result.replayed ? 200 : 201).send(result);
-  });
+  // There is deliberately no single-item sale route here any more. A sale is a
+  // basket with a receipt, and POST /api/sales/checkout is the only way to make
+  // one - see routes/sales.ts. Two ways to sell would mean two sets of rules.
 
   /**
    * Post a stock count.
