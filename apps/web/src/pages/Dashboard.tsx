@@ -9,17 +9,18 @@
  * gross margin without comment because cost price equalled selling price.
  * Stating what we do not know is the point of that tile.
  *
- * The charts below the tiles follow the same rule as the tiles: every figure
- * is derived from the movement ledger, and sales are only ever shown in
- * UNITS - this system has never recorded a selling price, so there is no
- * honest revenue number to draw.
+ * Today's trading sits first for anyone who may see sales: net sales, cost of
+ * sales and gross profit against yesterday. The stock charts below it are
+ * derived from the movement ledger, in units.
  */
 
 import { Link } from 'react-router-dom';
 
 import { api, type Dashboard as DashboardData } from '../lib/api.js';
 import { BarList, ChartCard, Delta, KpiTile, MiniTable, SeriesChart, VIZ } from '../lib/charts.js';
-import { bucketHeading, bucketLabel, pctChange } from '../lib/chartMath.js';
+import { bucketHeading, bucketKeys, bucketLabel, pctChange } from '../lib/chartMath.js';
+import { useAuth } from '../lib/auth.js';
+import { addDays } from '../lib/salesRange.js';
 import {
   Badge,
   Card,
@@ -34,6 +35,83 @@ import {
 } from '../lib/ui.js';
 
 const DAYS = 30;
+
+/**
+ * Today's trading: net sales, cost of sales and gross profit so far today, each
+ * against the whole of yesterday, with the last fortnight as a trend line. The
+ * day is the shop's (its own time zone), so "today" starts when the shop's day does.
+ */
+function TodaysTrading() {
+  const trading = useAsync(async () => {
+    const { today } = await api.businessToday();
+    const [now, fortnight] = await Promise.all([
+      api.salesReport({ from: today, to: today, groupBy: 'hour' }),
+      api.salesReport({ from: addDays(today, -13), to: today, groupBy: 'day' }),
+    ]);
+    return { today, now, fortnight };
+  }, []);
+
+  if (trading.error !== undefined) return <ErrorNote error={trading.error} />;
+  if (trading.data === undefined) {
+    return (
+      <div className="grid h-28 place-items-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  const { today, now, fortnight } = trading.data;
+  const s = now.summary;
+  const y = now.previous;
+  const byDay = new Map(fortnight.series.map((x) => [x.bucket, x]));
+  const run = bucketKeys(addDays(today, -13), today, 'day').map((k) => byDay.get(k));
+  const trend = (pick: (x: NonNullable<(typeof run)[number]>) => number) => run.map((x) => (x === undefined ? 0 : pick(x)));
+  const versus = 'than all of yesterday';
+
+  return (
+    <section aria-label="Today's trading" className="space-y-2" data-testid="todays-trading">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[13px] font-semibold tracking-tight">Today's trading</h2>
+        <Link to="/profit" className="text-accent-700 text-[12px] font-medium hover:underline">
+          Sales and profit →
+        </Link>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          label="Net sales today"
+          value={money(s.net)}
+          sub={`${s.receipts.toLocaleString()} ${s.receipts === 1 ? 'receipt' : 'receipts'}`}
+          spark={{ values: trend((x) => x.net), color: VIZ.sold }}
+          delta={<Delta pct={pctChange(s.net, y.net)} upIsGood versus={versus} />}
+        />
+        <KpiTile
+          label="Cost of sales"
+          value={money(s.cost)}
+          sub="what the goods cost"
+          delta={<Delta pct={pctChange(s.cost, y.cost)} upIsGood={null} versus={versus} />}
+        />
+        <KpiTile
+          label="Gross profit"
+          value={money(s.grossProfit)}
+          sub={s.marginPercent === null ? 'margin not known yet' : `${s.marginPercent.toFixed(1)}% margin`}
+          spark={{ values: trend((x) => x.grossProfit), color: VIZ.received }}
+          delta={<Delta pct={pctChange(s.grossProfit, y.grossProfit)} upIsGood versus={versus} />}
+        />
+        <KpiTile
+          label="Average receipt"
+          value={money(s.avgBasket)}
+          sub={`${qty(s.units)} units sold`}
+          delta={<Delta pct={pctChange(s.avgBasket, y.avgBasket)} upIsGood versus={versus} />}
+        />
+      </div>
+      {s.uncostedLines > 0 && (
+        <p className="text-[11.5px] text-amber-800">
+          {money(s.uncostedNet)} of today's sales have no cost on record, so they are left out of profit.
+        </p>
+      )}
+    </section>
+  );
+}
 
 /**
  * The API returns only days that had movements. A chart with the quiet days
@@ -62,6 +140,7 @@ function foldTail<T extends { key: string; label: string; value: number }>(rows:
 }
 
 export function Dashboard() {
+  const { can } = useAuth();
   const dash = useAsync(() => api.dashboard(), []);
   const branches = useAsync(() => api.stockByBranch(), []);
 
@@ -95,9 +174,11 @@ export function Dashboard() {
       <div>
         <h1 className="text-lg font-semibold tracking-tight">Overview</h1>
         <p className="text-ink-500 mt-0.5 text-[12.5px]">
-          Every figure below is derived from the movement ledger. Nothing here is a stored total.
+          Every figure below is derived from the stock ledger and the sales receipts. Nothing here is a stored total.
         </p>
       </div>
+
+      {can('sale.read') && <TodaysTrading />}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat

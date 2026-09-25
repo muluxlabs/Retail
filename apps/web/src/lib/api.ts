@@ -119,6 +119,53 @@ export interface Product {
   packs: Pack[];
 }
 
+export interface SalesReportParams {
+  from: string;
+  to: string;
+  groupBy?: 'hour' | 'day' | 'week' | 'month';
+  branchId?: string;
+  cashierId?: string;
+  categoryId?: string;
+  productId?: string;
+  paymentTypeId?: string;
+  fromHour?: number;
+  toHour?: number;
+}
+
+/** The trading account, for one period or one slice of it. */
+export interface SalesStatement {
+  receipts: number;
+  units: number;
+  /** Total sales, before discounts. */
+  gross: number;
+  discounts: number;
+  net: number;
+  /** Cost of sales, on lines whose cost was known. */
+  cost: number;
+  grossProfit: number;
+  /** On sales whose cost was known; null when there are none. */
+  marginPercent: number | null;
+  avgBasket: number;
+  /** Sales with no cost on record: kept out of profit and margin, never treated as free. */
+  uncostedNet: number;
+  uncostedLines: number;
+}
+
+export interface SalesReport {
+  timezone: string;
+  period: { from: string; to: string; days: number };
+  previousPeriod: { from: string; to: string };
+  summary: SalesStatement;
+  previous: SalesStatement;
+  series: (SalesStatement & { bucket: string })[];
+  byBranch: (SalesStatement & { branchId: string; branchCode: string; branchName: string })[];
+  byCategory: (SalesStatement & { categoryName: string })[];
+  byProduct: (SalesStatement & { productId: string; sku: string; productName: string })[];
+  byCashier: (SalesStatement & { cashierId: string; cashierName: string })[];
+  byHour: (SalesStatement & { hour: number })[];
+  byPayment: { paymentTypeId: string; name: string; receipts: number; amount: number }[];
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -771,6 +818,11 @@ export const api = {
 
   sales: (params: { branchId?: string; from?: string; to?: string; q?: string; limit?: number; offset?: number } = {}) =>
     request<{ items: SaleSummary[]; limit: number; offset: number }>(`/api/sales${qs(params)}`),
+
+  businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
+
+  salesReport: (params: SalesReportParams) =>
+    request<SalesReport>(`/api/reports/sales${qs({ ...params })}`),
 
   priceList: (
     params: { search?: string; categoryId?: string; missingOnly?: boolean; limit?: number; offset?: number } = {},

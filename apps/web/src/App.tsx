@@ -11,6 +11,7 @@ import { Exceptions } from './pages/Exceptions.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { Prices } from './pages/Prices.js';
+import { Profit } from './pages/Profit.js';
 import { Products } from './pages/Products.js';
 import { Receive } from './pages/Receive.js';
 import { Reports } from './pages/Reports.js';
@@ -34,6 +35,7 @@ const NAV = [
   { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
   { to: '/sales', label: 'Sales', permission: 'sale.read' },
+  { to: '/profit', label: 'Profit', permission: 'sale.read' },
   { to: '/receive', label: 'Goods received', permission: 'movement.post' },
   { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
@@ -175,6 +177,7 @@ export function App() {
           <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
           <Route path="/sales" element={<Guard permission="sale.read" home={home}><Sales /></Guard>} />
+          <Route path="/profit" element={<Guard permission="sale.read" home={home}><Profit /></Guard>} />
           <Route path="/receive" element={<Guard permission="movement.post" home={home}><Receive /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />

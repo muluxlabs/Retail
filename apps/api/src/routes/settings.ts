@@ -68,6 +68,21 @@ SETTINGS['receipt_width_mm'] = {
   parse: (raw) => (raw === '58' || raw === '80' ? { ok: true } : { ok: false, message: 'Paper width must be 58 or 80.' }),
 };
 
+SETTINGS['business_timezone'] = {
+  label: 'Business time zone',
+  description:
+    'The time zone the shop trades in, e.g. Africa/Harare. "Today", the hour of a sale and each day in the sales reports follow it, so a late-night sale lands on the day the shop thinks it does.',
+  parse: (raw) => {
+    if (!/^(UTC|[A-Za-z]+(\/[A-Za-z_+-]+)+)$/.test(raw)) return { ok: false, message: 'Use an IANA time zone name such as Africa/Harare.' };
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: raw });
+      return { ok: true };
+    } catch {
+      return { ok: false, message: 'That is not a known time zone. Try Africa/Harare.' };
+    }
+  },
+};
+
 const keyParams = z.object({ key: z.string().trim().min(1).max(100) });
 const updateBody = z.object({ value: z.string().trim().max(500) });
 
