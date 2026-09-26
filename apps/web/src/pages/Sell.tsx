@@ -23,10 +23,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { CustomerPicker } from '../components/CustomerPicker.js';
 import { ReceiptDialog } from '../components/Receipt.js';
 import { ReceiveDialog } from '../components/ReceiveDialog.js';
+import { CloseShiftDialog, OpenShiftDialog } from '../components/ShiftDialogs.js';
 import {
   api,
   ApiError,
@@ -40,6 +42,7 @@ import {
 import { useAuth } from '../lib/auth.js';
 import { useMyBranches } from '../lib/myBranches.js';
 import { basketCents, fromCents, lineCents, parseMoney, settleRows } from '../lib/basketMath.js';
+import { shortDateTime } from '../lib/buying.js';
 import { Badge, Button, Card, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
 interface CartLine {
@@ -114,9 +117,14 @@ export function Sell() {
   const [receivedNote, setReceivedNote] = useState<string | null>(null);
   const [recent, setRecent] = useState<{ id: string; receiptNo: string; net: number; items: number }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [shiftDialog, setShiftDialog] = useState<'open' | 'close' | null>(null);
+  const navigate = useNavigate();
 
   const branches = useMyBranches();
   const paymentTypes = useAsync(() => api.paymentTypes(), []);
+  // The cashier's own shift: while one is open, the branch and till are the shift's.
+  const shift = useAsync(() => api.currentShift(), []);
+  const myShift = shift.data?.shift ?? null;
   const tills = useAsync<Till[]>(() => (branchId === '' ? Promise.resolve([]) : api.tills(branchId)), [branchId]);
   const results = useAsync(
     () =>
@@ -141,13 +149,21 @@ export function Sell() {
     else if (branchId === '' && list.length === 1 && list[0] !== undefined) setBranchId(list[0].id);
   }, [branches.list, branches.loading, branchId]);
 
+  useEffect(() => {
+    if (myShift !== null && cart.length === 0) setBranchId(myShift.branchId);
+  }, [myShift]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Remember the till per branch; with a single till there is nothing to pick.
   useEffect(() => {
     const list = tills.data ?? [];
+    if (myShift !== null && myShift.branchId === branchId && list.some((t) => t.id === myShift.tillId)) {
+      setTillId(myShift.tillId);
+      return;
+    }
     const remembered = store.get(`sell.till.${branchId}`);
     if (list.some((t) => t.id === remembered)) setTillId(remembered);
     else setTillId(list.length === 1 && list[0] !== undefined ? list[0].id : '');
-  }, [tills.data, branchId]);
+  }, [tills.data, branchId, myShift]);
 
   // Start with one cash line, the common case.
   useEffect(() => {
@@ -195,6 +211,8 @@ export function Sell() {
   );
   const badReceived = pay.some((p) => p.received.trim() !== '' && parseMoney(p.received) === null);
   const needsTill = (tills.data ?? []).length > 0 && tillId === '';
+  // With shifts required, the till sells only on the cashier's own open shift.
+  const needsShift = shift.data?.required === true && tillId !== '' && myShift?.tillId !== tillId;
   // Charging a customer's account: say whose, and stay inside their credit.
   const accountCents = pay.reduce((sum, p, i) => sum + (p.typeId === 'account' ? (tender.rows[i]?.appliedCents ?? 0) : 0), 0);
   const accountProblem =
@@ -205,7 +223,7 @@ export function Sell() {
         : accountCents > Math.round(customer.available * 100)
           ? `${customer.name} has ${money(customer.available)} of credit left.`
           : null;
-  const canComplete = cartOk && netCents > 0 && tender.problem === null && accountProblem === null && !badReceived && !needsTill && !busy;
+  const canComplete = cartOk && netCents > 0 && tender.problem === null && accountProblem === null && !badReceived && !needsTill && !needsShift && !busy;
 
   function reset() {
     setCart([]);
@@ -376,6 +394,7 @@ export function Sell() {
       });
       // The till is free for the next customer the moment the sale is on the books.
       reset();
+      if (myShift !== null) shift.reload();
       setReceipt({ data: result.receipt, fresh: true });
       setRecent((r) => [
         { id: result.receipt.id, receiptNo: result.receipt.receiptNo, net: result.receipt.net, items: result.receipt.lines.length },
@@ -424,7 +443,7 @@ export function Sell() {
             <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">Branch</span>
             <select
               value={branchId}
-              disabled={cart.length > 0}
+              disabled={cart.length > 0 || myShift !== null}
               onChange={(e) => {
                 setBranchId(e.target.value);
                 store.set('sell.branch', e.target.value);
@@ -444,7 +463,7 @@ export function Sell() {
               <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">Till</span>
               <select
                 value={tillId}
-                disabled={cart.length > 0}
+                disabled={cart.length > 0 || myShift !== null}
                 onChange={(e) => {
                   setTillId(e.target.value);
                   store.set(`sell.till.${branchId}`, e.target.value);
@@ -462,6 +481,35 @@ export function Sell() {
           )}
         </div>
       </div>
+
+      {myShift !== null ? (
+        <div className="border-accent-300/60 bg-accent-50/60 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[12.5px]" data-testid="shift-bar">
+          <span>
+            Your shift <span className="font-mono font-medium">{myShift.shiftNo}</span> on {myShift.tillName} · since {shortDateTime(myShift.openedAt)} ·{' '}
+            {myShift.receipts} receipt{myShift.receipts === 1 ? '' : 's'}
+          </span>
+          <Button onClick={() => setShiftDialog('close')} disabled={cart.length > 0}>
+            Close shift
+          </Button>
+        </div>
+      ) : (
+        can('shift.open') &&
+        tillId !== '' && (
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[12.5px] ${needsShift ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-ink-200 text-ink-600'}`}
+            data-testid="no-shift"
+          >
+            <span>
+              {needsShift
+                ? `Open your shift before selling: count the cash in ${(tills.data ?? []).find((t) => t.id === tillId)?.name ?? 'the till'} first.`
+                : 'No shift open. Opening one counts the float and keeps this till yours until you close it.'}
+            </span>
+            <Button variant={needsShift ? 'primary' : 'secondary'} onClick={() => setShiftDialog('open')} disabled={cart.length > 0}>
+              Open shift
+            </Button>
+          </div>
+        )
+      )}
 
       {branchId === '' ? (
         <Card className="px-4 py-6">
@@ -907,6 +955,27 @@ export function Sell() {
         <div className="bg-accent-50 border-accent-300/60 text-accent-700 rounded-lg border px-3 py-2 text-[12.5px]" role="status" data-testid="received-note">
           {receivedNote}
         </div>
+      )}
+      {shiftDialog === 'open' && tillId !== '' && (
+        <OpenShiftDialog
+          branchId={branchId}
+          tillId={tillId}
+          tillName={(tills.data ?? []).find((t) => t.id === tillId)?.name ?? 'the till'}
+          onClose={() => setShiftDialog(null)}
+          onDone={() => {
+            setShiftDialog(null);
+            shift.reload();
+          }}
+        />
+      )}
+      {shiftDialog === 'close' && myShift !== null && (
+        <CloseShiftDialog
+          shiftId={myShift.id}
+          shiftNo={myShift.shiftNo}
+          tillName={myShift.tillName}
+          onClose={() => setShiftDialog(null)}
+          onDone={(r) => navigate(`/shifts/${r.id}`)}
+        />
       )}
       {receiving && (
         <ReceiveDialog

@@ -1,5 +1,5 @@
 /**
- * The bar that switches between cash custody and closing the day. Each person
+ * The bar that switches between cash custody, cashier shifts and closing the day. Each person
  * sees the ones they may use.
  */
 
@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth.js';
 
 const TABS = [
   { to: '/cash', label: 'Cash custody', any: ['cash.read', 'cash.count', 'cash.move'] },
+  { to: '/shifts', label: 'Shifts', any: ['shift.manage', 'sale.read'] },
   { to: '/day-close', label: 'End of day', any: ['day.close', 'sale.read'] },
 ];
 

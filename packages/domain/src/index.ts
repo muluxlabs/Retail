@@ -17,3 +17,4 @@ export * from './purchasing.js';
 export * from './openingStock.js';
 export * from './dayClose.js';
 export * from './customers.js';
+export * from './shifts.js';

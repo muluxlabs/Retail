@@ -70,6 +70,11 @@ const STATUS_BY_CODE: Record<string, number> = {
   // Customers on credit.
   INVALID_CUSTOMER: 422,
   CREDIT_LIMIT_EXCEEDED: 409,
+  // Shifts: not valid as asked; the till needs an open shift; one is already open.
+  INVALID_SHIFT: 422,
+  SHIFT_REQUIRED: 409,
+  SHIFT_ALREADY_OPEN: 409,
+  SHIFTS_STILL_OPEN: 409,
 };
 
 export interface ErrorBody {

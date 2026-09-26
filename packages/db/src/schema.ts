@@ -43,7 +43,8 @@ export type ExceptionKind =
   | 'unreviewed_product'
   | 'stock_reset'
   | 'opening_stock'
-  | 'credit_limit_change';
+  | 'credit_limit_change'
+  | 'shift_variance';
 
 export type ProductReviewState = 'approved' | 'pending';
 
@@ -416,6 +417,7 @@ export interface SaleTable {
   change_given: ColumnType<number, number | undefined, never>;
   currency: ColumnType<string, string | undefined, never>;
   customer_id: ColumnType<string | null, string | null | undefined, never>;
+  shift_id: ColumnType<string | null, string | null | undefined, never>;
 }
 
 export interface SaleLineTable {
@@ -668,6 +670,25 @@ export interface CustomerBalanceView {
   balance: number;
 }
 
+export interface ShiftTable {
+  id: string;
+  shift_no: string;
+  branch_id: string;
+  cash_point_id: string;
+  cashier_id: string;
+  opened_at: ColumnType<Date, Date | string, never>;
+  opened_by: string;
+  opening_expected: number;
+  opening_counted: number;
+  opening_variance: number;
+  closed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string>;
+  closed_by: ColumnType<string | null, string | null | undefined, string>;
+  closing_expected: ColumnType<number | null, number | null | undefined, number>;
+  closing_counted: ColumnType<number | null, number | null | undefined, number>;
+  closing_variance: ColumnType<number | null, number | null | undefined, number>;
+  note: string | null;
+}
+
 export interface DayCloseTable {
   id: string;
   close_no: string;
@@ -722,6 +743,7 @@ export interface Database {
   customer: CustomerTable;
   customer_payment: CustomerPaymentTable;
   customer_balance: CustomerBalanceView;
+  shift: ShiftTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

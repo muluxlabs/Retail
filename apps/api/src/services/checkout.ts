@@ -48,6 +48,7 @@ import type { Database } from '@retail-ops/db';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 
+import { shiftForSale } from './shifts.js';
 import { postMovementInTx, wac } from './stock.js';
 
 type Db = Kysely<Database>;
@@ -289,6 +290,9 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
     if (tills.length > 0) throw new TillRequired();
   }
 
+  // -- whose shift this sale is on ---------------------------------------------------------------------------------
+  const shiftId = await shiftForSale(tx, cashPointId, input.cashierId);
+
   // -- take the stock out, in a fixed order -------------------------------------------------------------
   const occurredAt = new Date();
   const movementSeqByIndex = new Map<number, number>();
@@ -352,6 +356,7 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       cash_point_id: cashPointId,
       cashier_id: input.cashierId,
       customer_id: customerId,
+      shift_id: shiftId,
       occurred_at: occurredAt,
       gross_total: fromCents(totals.grossCents),
       discount_total: fromCents(totals.discountCents),

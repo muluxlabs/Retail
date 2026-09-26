@@ -16,6 +16,7 @@ import { sql } from 'kysely';
 
 import { onHand as cashOnHand, post as postCash } from './cash.js';
 import { branchNumber, businessTimezone, dayIn } from './purchasing.js';
+import { assertNoOpenShifts } from './shifts.js';
 
 type Db = Kysely<Database>;
 type Tx = Transaction<Database>;
@@ -153,6 +154,9 @@ export async function closeDay(db: Db, input: CloseInput): Promise<{ id: string;
 async function runClose(tx: Tx, input: CloseInput): Promise<{ id: string; closeNo: string }> {
   const branch = await tx.selectFrom('branch').select(['id', 'code', 'name', 'is_active']).where('id', '=', input.branchId).executeTakeFirst();
   if (branch === undefined || !branch.is_active) throw new InvalidDayClose('That branch is not available.');
+
+  // Every cashier's shift at the branch must be closed first.
+  await assertNoOpenShifts(tx, input.branchId);
 
   // One close at a time per branch, and no sale can take a number while we read the counter.
   await sql`SELECT pg_advisory_xact_lock(hashtextextended(${'day_close' + input.branchId}, 0))`.execute(tx);

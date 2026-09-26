@@ -58,6 +58,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   stock_reset: 'Branch stock set to zero',
   opening_stock: 'Opening stock introduced',
   credit_limit_change: 'Credit limit raised',
+  shift_variance: 'Till over / short on a shift',
 };
 
 /**
@@ -77,6 +78,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   stock_reset: 'A manager zeroed every product at a branch. It cannot be undone - review the reason given.',
   opening_stock: 'Stock was brought onto the books with no supplier invoice behind it. Check the quantities and costs against a count.',
   credit_limit_change: 'A customer was allowed to owe more. Check who raised it and that the customer pays on time.',
+  shift_variance: 'The cash counted in a till at the start or end of a shift did not match the books. The cashier on that shift is named.',
 };
 
 // -- primitives --------------------------------------------------------------

@@ -728,6 +728,74 @@ export interface PaymentType {
   forSuppliers: boolean;
 }
 
+export interface CurrentShift {
+  required: boolean;
+  shift: {
+    id: string;
+    shiftNo: string;
+    branchId: string;
+    branchName: string;
+    tillId: string;
+    tillName: string;
+    openedAt: string;
+    float: number;
+    receipts: number;
+  } | null;
+}
+
+export interface ShiftTill {
+  id: string;
+  name: string;
+  shiftId: string | null;
+  shiftNo: string | null;
+  cashierId: string | null;
+  cashierName: string | null;
+  openedAt: string | null;
+}
+
+export interface ShiftRow {
+  id: string;
+  shiftNo: string;
+  branchId: string;
+  branchName: string;
+  tillName: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt: string | null;
+  float: number;
+  openingVariance: number;
+  closingExpected: number | null;
+  closingCounted: number | null;
+  closingVariance: number | null;
+  receipts: number;
+  net: number;
+}
+
+interface Counted {
+  expected: number;
+  counted: number;
+  variance: number;
+}
+
+export interface ShiftReport {
+  id: string;
+  shiftNo: string;
+  branchId: string;
+  branchName: string;
+  tillId: string;
+  tillName: string;
+  cashierId: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt: string | null;
+  closedByName: string | null;
+  opening: Counted;
+  closing: Counted | null;
+  sales: { receipts: number; net: number; firstReceipt: string | null; lastReceipt: string | null };
+  byPayment: { name: string; receipts: number; amount: number }[];
+  cash: { opening: number; lines: { reason: string; amount: number }[]; other: number; expected: number };
+}
+
 export interface Till {
   id: string;
   name: string;
@@ -874,7 +942,8 @@ export type ExceptionKind =
   | 'unreviewed_product'
   | 'stock_reset'
   | 'opening_stock'
-  | 'credit_limit_change';
+  | 'credit_limit_change'
+  | 'shift_variance';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1504,6 +1573,21 @@ export const api = {
   zReports: (params: { branchId?: string; limit?: number } = {}) => request<{ items: ZSummary[] }>(`/api/day-close${qs({ ...params })}`),
 
   zReport: (id: string) => request<ZReport>(`/api/day-close/${id}`),
+
+  currentShift: () => request<CurrentShift>('/api/shifts/current'),
+
+  shiftTills: (branchId: string) => request<{ tills: ShiftTill[] }>(`/api/shifts/tills${qs({ branchId })}`),
+
+  openShift: (body: { id: string; branchId: string; cashPointId: string; counted: number; cashierId?: string; note?: string | null }) =>
+    request<{ id: string; shiftNo: string; replayed: boolean }>('/api/shifts/open', { method: 'POST', body: JSON.stringify(body) }),
+
+  closeShift: (id: string, body: { counted: number; note?: string | null }) =>
+    request<{ id: string; shiftNo: string; variance: number }>(`/api/shifts/${id}/close`, { method: 'POST', body: JSON.stringify(body) }),
+
+  shifts: (params: { branchId?: string; status?: 'open' | 'closed' | 'all'; limit?: number } = {}) =>
+    request<{ shifts: ShiftRow[] }>(`/api/shifts${qs({ ...params })}`),
+
+  shift: (id: string) => request<ShiftReport>(`/api/shifts/${id}`),
 
   customers: (params: { q?: string; includeInactive?: boolean; owingOnly?: boolean } = {}) =>
     request<{ items: CustomerRow[] }>(`/api/customers${qs({ ...params })}`),

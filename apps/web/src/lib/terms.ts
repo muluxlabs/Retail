@@ -157,6 +157,8 @@ export const DOC_TYPE_TERMS: Record<string, string> = {
   CASH_MOVE: 'Cash movement',
   CASH_COUNT: 'Cash count',
   RESET: 'Branch stock reset',
+  SHIFT_OPEN: 'Shift opened',
+  SHIFT_CLOSE: 'Shift closed',
 };
 
 /** Falls back to a readable version of an unknown value rather than showing it raw. */

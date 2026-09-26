@@ -83,6 +83,13 @@ SETTINGS['business_timezone'] = {
   },
 };
 
+SETTINGS['shifts_required'] = {
+  label: 'Tills need an open shift to sell',
+  description:
+    'yes: a cashier must open a shift on the till (counting the float) before selling, and end of day waits until every shift at the branch is closed. no: shifts are optional.',
+  parse: (raw) => (raw === 'yes' || raw === 'no' ? { ok: true } : { ok: false, message: 'Answer yes or no.' }),
+};
+
 const keyParams = z.object({ key: z.string().trim().min(1).max(100) });
 const updateBody = z.object({ value: z.string().trim().max(500) });
 
