@@ -14,6 +14,7 @@ import { ChangePassword, Login } from './pages/Login.js';
 import { NewOrder, Orders } from './pages/Orders.js';
 import { OpeningStock, OpeningStockDetail } from './pages/OpeningStock.js';
 import { NewReturn, ReturnDetailPage, Returns } from './pages/Returns.js';
+import { DayClose, ZReportPage } from './pages/DayClose.js';
 import { OrderDetail } from './pages/OrderDetail.js';
 import { Owed } from './pages/Owed.js';
 import { Payments } from './pages/Payments.js';
@@ -42,6 +43,7 @@ import { Users } from './pages/Users.js';
  * to catch what these two get wrong.
  */
 const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
+const CASH_PATHS = ['/cash', '/day-close'];
 const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
 const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/payments', '/owed'];
 
@@ -60,7 +62,7 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
   // A cashier holds only cash.count, finance/auditor only cash.read - no
   // single permission covers everyone who should see this tab, so it takes
   // any-of. The page itself still decides what each of them can actually do.
-  { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move'] },
+  { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move', 'day.close'], group: CASH_PATHS },
   { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
   { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
   // One tab for every report; the screens inside are switched by the ReportTabs bar.
@@ -77,6 +79,7 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
 function navTarget(item: { to: string; group?: string[] }, can: (p: string) => boolean): string {
   if (item.group === undefined) return item.to;
   if (item.to === '/suppliers') return can('supplier.read') ? '/suppliers' : '/receive';
+  if (item.to === '/cash') return can('cash.read') || can('cash.count') || can('cash.move') ? '/cash' : '/day-close';
   if (item.to === '/count') return can('stock.adjust') ? '/count' : '/opening-stock';
   return can('sale.read') ? '/profit' : item.to;
 }
@@ -230,6 +233,8 @@ export function App() {
               </Guard>
             }
           />
+          <Route path="/day-close" element={<Guard permission={['day.close', 'sale.read']} home={home}><DayClose /></Guard>} />
+          <Route path="/day-close/:id" element={<Guard permission={['day.close', 'sale.read']} home={home}><ZReportPage /></Guard>} />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />

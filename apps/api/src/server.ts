@@ -29,6 +29,7 @@ import { registerProductReportRoutes } from './routes/productReports.js';
 import { registerSalesReportRoutes } from './routes/salesReports.js';
 import { registerSupplierRoutes } from './routes/suppliers.js';
 import { registerOpeningStockRoutes } from './routes/openingStock.js';
+import { registerDayCloseRoutes } from './routes/dayClose.js';
 import { registerSaleRoutes } from './routes/sales.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerStockLedgerRoutes } from './routes/stockLedger.js';
@@ -96,6 +97,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       await api.register(registerProductReportRoutes);
       await api.register(registerSupplierRoutes);
       await api.register(registerOpeningStockRoutes);
+      await api.register(registerDayCloseRoutes);
       await api.register(registerPriceRoutes);
     },
     { prefix: '/api' },

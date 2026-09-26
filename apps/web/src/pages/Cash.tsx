@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 
+import { CashTabs } from '../components/CashTabs.js';
 import { api, ApiError, type Branch, type CashPointKind, type CashPointPosition, type CashPointRef } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { cashReason } from '../lib/terms.js';
@@ -38,6 +39,7 @@ export function Cash() {
 
   return (
     <div className="space-y-4">
+      <CashTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Cash custody</h1>

@@ -622,6 +622,29 @@ export interface OpeningStockLineTable {
   movement_seq: number;
 }
 
+export interface DayCloseTable {
+  id: string;
+  close_no: string;
+  branch_id: string;
+  business_day: string;
+  period_from: Date | null;
+  period_to: ColumnType<Date, Date | string, never>;
+  from_receipt_no: number;
+  to_receipt_no: number;
+  closed_by: string;
+  note: string | null;
+  receipts: number;
+  gross_sales: number;
+  discounts: number;
+  net_sales: number;
+  cost_of_sales: number;
+  cash_expected: number;
+  cash_counted: number;
+  cash_variance: number;
+  detail: unknown;
+  recorded_at: Timestamp;
+}
+
 export interface Database {
   branch: BranchTable;
   terminal: TerminalTable;
@@ -649,6 +672,7 @@ export interface Database {
   opening_stock_line: OpeningStockLineTable;
   purchase_return: PurchaseReturnTable;
   purchase_return_line: PurchaseReturnLineTable;
+  day_close: DayCloseTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

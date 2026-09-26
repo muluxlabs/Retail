@@ -581,6 +581,62 @@ export interface OpeningDoc {
   lines: { lineNo: number; productId: string; sku: string; name: string; packLabel: string; qtyPacks: number; qtyBase: number; unitCost: number | null; lineTotal: number | null }[];
 }
 
+export interface DayFigures {
+  fromReceiptNo: number;
+  toReceiptNo: number;
+  firstReceipt: string | null;
+  lastReceipt: string | null;
+  receipts: number;
+  gross: number;
+  discounts: number;
+  net: number;
+  cost: number;
+  grossProfit: number;
+  uncostedNet: number;
+  cashTaken: number;
+  byPayment: { paymentTypeId: string; name: string; receipts: number; amount: number }[];
+  byCashier: { cashierId: string; name: string; receipts: number; net: number }[];
+}
+
+export interface DayPreview {
+  lastClose: { id: string; closeNo: string; at: string } | null;
+  since: string | null;
+  figures: DayFigures;
+  tills: { id: string; name: string }[];
+}
+
+export interface ZSummary {
+  id: string;
+  closeNo: string;
+  businessDay: string;
+  periodFrom: string | null;
+  periodTo: string;
+  receipts: number;
+  net: number;
+  cashExpected: number;
+  cashCounted: number;
+  cashVariance: number;
+  branchId: string;
+  branchName: string;
+  closedByName: string;
+}
+
+export interface ZReport extends ZSummary {
+  fromReceiptNo: number;
+  toReceiptNo: number;
+  note: string | null;
+  gross: number;
+  discounts: number;
+  cost: number;
+  branchCode: string;
+  detail: {
+    figures: DayFigures;
+    tills: { id: string; name: string; expected: number; counted: number; variance: number }[];
+    exceptions: { kind: string; count: number }[];
+    previousClose: { id: string; closeNo: string } | null;
+  };
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -1352,6 +1408,15 @@ export const api = {
     request<{ items: OpeningDocSummary[] }>(`/api/opening-stock${qs({ ...params })}`),
 
   openingDoc: (id: string) => request<OpeningDoc>(`/api/opening-stock/${id}`),
+
+  dayPreview: (branchId: string) => request<DayPreview>(`/api/day-close/preview${qs({ branchId })}`),
+
+  closeDay: (body: { id: string; branchId: string; note?: string | null; counts: { cashPointId: string; counted: number }[] }) =>
+    request<{ id: string; closeNo: string; replayed: boolean }>('/api/day-close', { method: 'POST', body: JSON.stringify(body) }),
+
+  zReports: (params: { branchId?: string; limit?: number } = {}) => request<{ items: ZSummary[] }>(`/api/day-close${qs({ ...params })}`),
+
+  zReport: (id: string) => request<ZReport>(`/api/day-close/${id}`),
 
   businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
 
