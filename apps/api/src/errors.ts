@@ -62,6 +62,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   PAYMENT_ALREADY_VOIDED: 409,
   PURCHASING_DOCUMENT_NOT_FOUND: 404,
   PROOF_REJECTED: 422,
+  // Opening stock: not a valid document, or items that already have stock.
+  INVALID_OPENING_STOCK: 422,
+  OPENING_STOCK_NOT_EMPTY: 409,
 };
 
 export interface ErrorBody {

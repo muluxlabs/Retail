@@ -65,7 +65,7 @@ const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() :
 
 // -- numbering ----------------------------------------------------------------------------------------
 
-async function branchNumber(tx: Tx, branchId: string, kind: string, code: string): Promise<string> {
+export async function branchNumber(tx: Tx, branchId: string, kind: string, code: string): Promise<string> {
   const r = await sql<{ lastNo: number }>`
     INSERT INTO document_counter (branch_id, doc_kind, last_no) VALUES (${branchId}::uuid, ${kind}, 1)
     ON CONFLICT (branch_id, doc_kind) DO UPDATE SET last_no = document_counter.last_no + 1

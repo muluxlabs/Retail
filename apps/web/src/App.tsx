@@ -12,6 +12,7 @@ import { Items } from './pages/Items.js';
 import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { NewOrder, Orders } from './pages/Orders.js';
+import { OpeningStock, OpeningStockDetail } from './pages/OpeningStock.js';
 import { OrderDetail } from './pages/OrderDetail.js';
 import { Owed } from './pages/Owed.js';
 import { Payments } from './pages/Payments.js';
@@ -40,6 +41,7 @@ import { Users } from './pages/Users.js';
  * to catch what these two get wrong.
  */
 const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
+const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
 const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/payments', '/owed'];
 
 /** A path is inside a group when it is the group's path or below it (/orders/new is inside /orders). */
@@ -51,7 +53,8 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
   { to: '/sell', label: 'Sell', permission: 'movement.post' },
   // One tab for everything to do with suppliers; the screens inside are switched by the BuyingTabs bar.
   { to: '/suppliers', label: 'Buying', permission: ['supplier.read', 'grn.post'], group: BUYING_PATHS },
-  { to: '/count', label: 'Stock take', permission: 'stock.adjust' },
+  // Stock take and opening stock share one tab; the StockEntryTabs bar switches between them.
+  { to: '/count', label: 'Stock entry', permission: ['stock.adjust', 'stock.opening'], group: STOCK_ENTRY_PATHS },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
   // A cashier holds only cash.count, finance/auditor only cash.read - no
   // single permission covers everyone who should see this tab, so it takes
@@ -73,6 +76,7 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
 function navTarget(item: { to: string; group?: string[] }, can: (p: string) => boolean): string {
   if (item.group === undefined) return item.to;
   if (item.to === '/suppliers') return can('supplier.read') ? '/suppliers' : '/receive';
+  if (item.to === '/count') return can('stock.adjust') ? '/count' : '/opening-stock';
   return can('sale.read') ? '/profit' : item.to;
 }
 
@@ -210,6 +214,8 @@ export function App() {
           <Route path="/receive/:id" element={<Guard permission="supplier.read" home={home}><ReceiveDetail /></Guard>} />
           <Route path="/payments" element={<Guard permission="supplier.read" home={home}><Payments /></Guard>} />
           <Route path="/owed" element={<Guard permission="supplier.read" home={home}><Owed /></Guard>} />
+          <Route path="/opening-stock" element={<Guard permission="stock.opening" home={home}><OpeningStock /></Guard>} />
+          <Route path="/opening-stock/:id" element={<Guard permission="stock.read" home={home}><OpeningStockDetail /></Guard>} />
           <Route path="/count" element={<Guard permission="stock.adjust" home={home}><Count /></Guard>} />
           <Route path="/transfers" element={<Guard permission="transfer.read" home={home}><Transfers /></Guard>} />
           <Route

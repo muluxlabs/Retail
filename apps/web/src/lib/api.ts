@@ -496,6 +496,42 @@ export interface Payables {
   }[];
 }
 
+export interface OpeningMatch {
+  productId: string;
+  sku: string;
+  name: string;
+  packId: string;
+  packs: { id: string; label: string; qtyBase: number }[];
+  onHand: number;
+}
+
+export interface OpeningDocSummary {
+  id: string;
+  docNo: string;
+  enteredAt: string;
+  totalCost: number;
+  note: string | null;
+  branchId: string;
+  branchName: string;
+  enteredByName: string;
+  lines: number;
+  linesWithoutCost: number;
+  units: number;
+}
+
+export interface OpeningDoc {
+  id: string;
+  docNo: string;
+  enteredAt: string;
+  totalCost: number;
+  note: string | null;
+  branchId: string;
+  branchName: string;
+  branchCode: string;
+  enteredByName: string;
+  lines: { lineNo: number; productId: string; sku: string; name: string; packLabel: string; qtyPacks: number; qtyBase: number; unitCost: number | null; lineTotal: number | null }[];
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -645,7 +681,8 @@ export type ExceptionKind =
   | 'price_override'
   | 'void_after_tender'
   | 'unreviewed_product'
-  | 'stock_reset';
+  | 'stock_reset'
+  | 'opening_stock';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1228,6 +1265,31 @@ export const api = {
   },
 
   proofUrl: (proofId: string) => `${API_BASE}/api/supplier-payments/proofs/${proofId}`,
+
+  postOpeningStock: (body: {
+    id: string;
+    branchId: string;
+    note?: string | null;
+    lines: { productId: string; packId: string; qtyPacks: number; unitCost: number | null }[];
+  }) =>
+    request<{ id: string; docNo: string; totalCost: number; lines: number; linesWithoutCost: number; replayed: boolean }>('/api/opening-stock', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  resolveOpeningCodes: (branchId: string, codes: string[]) =>
+    request<{ items: { code: string; match: OpeningMatch | null }[] }>('/api/opening-stock/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ branchId, codes }),
+    }),
+
+  openingPositions: (branchId: string) =>
+    request<{ items: { productId: string; qtyBase: number }[] }>(`/api/opening-stock/positions${qs({ branchId })}`),
+
+  openingDocs: (params: { branchId?: string; limit?: number } = {}) =>
+    request<{ items: OpeningDocSummary[] }>(`/api/opening-stock${qs({ ...params })}`),
+
+  openingDoc: (id: string) => request<OpeningDoc>(`/api/opening-stock/${id}`),
 
   businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
 

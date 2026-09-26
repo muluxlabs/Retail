@@ -48,7 +48,10 @@ function aggregates() {
     sql<number>`round(coalesce(sum(qty_base) filter (where reason in ('grn', 'grn_reversal')), 0), 4)`.as(
       'unitsReceived',
     ),
-    sql<number>`round(coalesce(sum(qty_base * unit_cost) filter (where reason in ('grn', 'grn_reversal') and unit_cost is not null), 0), 2)`.as(
+    // Each movement's cost rounded to the cent BEFORE summing, as a document's
+    // lines are: otherwise the periods of a report can add to a cent more or less
+    // than its total.
+    sql<number>`round(coalesce(sum(round(qty_base * unit_cost, 2)) filter (where reason in ('grn', 'grn_reversal') and unit_cost is not null), 0), 2)`.as(
       'costReceived',
     ),
     sql<number>`round(coalesce(sum(-qty_base) filter (where reason = 'transfer_out'), 0), 4)`.as(

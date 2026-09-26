@@ -56,6 +56,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   void_after_tender: 'Void after tender',
   unreviewed_product: 'Product added at the till',
   stock_reset: 'Branch stock set to zero',
+  opening_stock: 'Opening stock introduced',
 };
 
 /**
@@ -73,6 +74,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   void_after_tender: 'A line was voided after payment was taken.',
   unreviewed_product: 'A cashier could not find this item and added it to finish the sale.',
   stock_reset: 'A manager zeroed every product at a branch. It cannot be undone - review the reason given.',
+  opening_stock: 'Stock was brought onto the books with no supplier invoice behind it. Check the quantities and costs against a count.',
 };
 
 // -- primitives --------------------------------------------------------------

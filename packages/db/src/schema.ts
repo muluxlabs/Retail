@@ -41,7 +41,8 @@ export type ExceptionKind =
   | 'price_override'
   | 'void_after_tender'
   | 'unreviewed_product'
-  | 'stock_reset';
+  | 'stock_reset'
+  | 'opening_stock';
 
 export type ProductReviewState = 'approved' | 'pending';
 
@@ -565,6 +566,30 @@ export interface SupplierBalanceView {
   balance: number;
 }
 
+export interface OpeningStockTable {
+  id: string;
+  doc_no: string;
+  branch_id: string;
+  entered_by: string;
+  entered_at: ColumnType<Date, Date | string, never>;
+  note: string | null;
+  total_cost: number;
+  recorded_at: Timestamp;
+}
+
+export interface OpeningStockLineTable {
+  id: Generated<string>;
+  doc_id: string;
+  line_no: number;
+  product_id: string;
+  pack_id: string;
+  qty_packs: number;
+  qty_base: number;
+  unit_cost: number | null;
+  line_total: number | null;
+  movement_seq: number;
+}
+
 export interface Database {
   branch: BranchTable;
   terminal: TerminalTable;
@@ -588,6 +613,8 @@ export interface Database {
   supplier_payment: SupplierPaymentTable;
   supplier_payment_proof: SupplierPaymentProofTable;
   supplier_balance: SupplierBalanceView;
+  opening_stock: OpeningStockTable;
+  opening_stock_line: OpeningStockLineTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

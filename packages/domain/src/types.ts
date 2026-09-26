@@ -33,7 +33,9 @@ export type ExceptionKind =
   | 'cash_variance'
   | 'price_override'
   | 'void_after_tender'
-  | 'stock_reset';
+  | 'unreviewed_product'
+  | 'stock_reset'
+  | 'opening_stock';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 

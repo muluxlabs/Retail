@@ -56,12 +56,14 @@ export interface ParsedLines {
   problem: string | null;
 }
 
-export function parseLines(lines: PurchaseLine[]): ParsedLines {
+export function parseLines(lines: PurchaseLine[], costOptional = false): ParsedLines {
   const perLine = lines.map((l) => {
     const q = parseQty(l.qty);
     const c = parseCost(l.cost);
     if (q === null) return { cents: null, problem: 'Enter a quantity' };
-    if (c === null) return { cents: null, problem: 'Enter the price per pack' };
+    // Opening stock may be introduced without a known cost; a delivery never can.
+    if (c === null && costOptional && l.cost.trim() === '') return { cents: null, problem: null };
+    if (c === null) return { cents: null, problem: costOptional ? 'Not a valid cost' : 'Enter the price per pack' };
     return { cents: costLineCents(q, c), problem: null };
   });
   const problem = lines.length === 0 ? 'Add at least one item.' : (perLine.find((p) => p.problem !== null)?.problem ?? null);
@@ -78,19 +80,27 @@ export function PurchaseLines({
   onChange,
   showOrdered = false,
   canAdd = true,
+  costOptional = false,
+  costLabel = 'Price per pack',
+  note,
 }: {
   lines: PurchaseLine[];
   onChange: (lines: PurchaseLine[]) => void;
   /** Show the ordered quantity and price beside what is being received. */
   showOrdered?: boolean;
   canAdd?: boolean;
+  /** Blank cost allowed (opening stock whose cost is not known). */
+  costOptional?: boolean;
+  costLabel?: string;
+  /** A remark under a line, by product id - e.g. "already 12 on hand". */
+  note?: (productId: string) => string | null;
 }) {
   const [search, setSearch] = useState('');
   const results = useAsync(
     () => (search.trim() === '' ? Promise.resolve({ items: [] as Product[], total: 0, limit: 0, offset: 0 }) : api.products({ search, limit: 8 })),
     [search],
   );
-  const parsed = parseLines(lines);
+  const parsed = parseLines(lines, costOptional);
 
   const patch = (key: string, p: Partial<PurchaseLine>) => onChange(lines.map((l) => (l.key === key ? { ...l, ...p } : l)));
   const input = 'border-ink-200 focus:border-accent-500 rounded-lg border bg-white px-2 py-1.5 text-[13px] outline-none';
@@ -155,7 +165,7 @@ export function PurchaseLines({
                 <th className="px-2 py-2 font-medium">Pack</th>
                 {showOrdered && <th className="px-2 py-2 text-right font-medium">Ordered</th>}
                 <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                <th className="px-2 py-2 text-right font-medium">Price per pack</th>
+                <th className="px-2 py-2 text-right font-medium">{costLabel}</th>
                 <th className="px-2 py-2 text-right font-medium">Line total</th>
                 <th className="w-8" />
               </tr>
@@ -171,6 +181,7 @@ export function PurchaseLines({
                     <td className="py-2 pr-2">
                       <div className="font-medium">{l.name}</div>
                       <div className="text-ink-400 font-mono text-[11px]">{l.sku}</div>
+                      {note?.(l.productId) != null && <div className="mt-0.5 text-[11px] text-red-700">{note(l.productId)}</div>}
                     </td>
                     <td className="px-2 py-2">
                       {l.poLineId !== undefined && l.poLineId !== null ? (
@@ -211,7 +222,7 @@ export function PurchaseLines({
                       <input
                         inputMode="decimal"
                         value={l.cost}
-                        placeholder="0.00"
+                        placeholder={costOptional ? 'unknown' : '0.00'}
                         aria-label={`Price per pack of ${l.name}`}
                         onChange={(e) => patch(l.key, { cost: e.target.value })}
                         className={`${input} tnum w-28 text-right`}

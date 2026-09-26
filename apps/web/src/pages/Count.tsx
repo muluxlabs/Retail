@@ -20,6 +20,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { StockEntryTabs } from '../components/StockEntryTabs.js';
 import { api, ApiError, type Branch } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
@@ -115,6 +116,7 @@ export function Count() {
 
   return (
     <div className="space-y-4">
+      <StockEntryTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Stock take</h1>

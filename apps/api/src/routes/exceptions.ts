@@ -26,6 +26,7 @@ const KINDS = [
   'void_after_tender',
   'unreviewed_product',
   'stock_reset',
+  'opening_stock',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

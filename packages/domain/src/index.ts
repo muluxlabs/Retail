@@ -14,3 +14,4 @@ export * from './policy.js';
 export * from './ledger.js';
 export * from './basket.js';
 export * from './purchasing.js';
+export * from './openingStock.js';
