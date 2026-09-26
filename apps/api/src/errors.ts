@@ -67,6 +67,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   OPENING_STOCK_NOT_EMPTY: 409,
   // End of day: a till not counted, or a count that is not a till here.
   INVALID_DAY_CLOSE: 422,
+  // Customers on credit.
+  INVALID_CUSTOMER: 422,
+  CREDIT_LIMIT_EXCEEDED: 409,
 };
 
 export interface ErrorBody {

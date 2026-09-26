@@ -46,6 +46,8 @@ const checkoutBody = z.object({
     .min(1, 'Say how it was paid.')
     .max(6),
   overrideNegative: z.boolean().default(false),
+  /** A named customer; required when any of it is paid on account. */
+  customerId: z.uuid().nullable().default(null),
 });
 
 const idParams = z.object({ id: z.uuid() });
@@ -92,6 +94,7 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
       payments: body.payments,
       canOverridePrice: user.permissions.has('price.override'),
       overrideNegative: body.overrideNegative,
+      customerId: body.customerId,
     });
     return reply.status(result.replayed ? 200 : 201).send(result);
   });

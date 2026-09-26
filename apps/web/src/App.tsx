@@ -15,6 +15,7 @@ import { NewOrder, Orders } from './pages/Orders.js';
 import { OpeningStock, OpeningStockDetail } from './pages/OpeningStock.js';
 import { NewReturn, ReturnDetailPage, Returns } from './pages/Returns.js';
 import { DayClose, ZReportPage } from './pages/DayClose.js';
+import { CustomerDetailPage, Customers, DebtorsPage } from './pages/Customers.js';
 import { OrderDetail } from './pages/OrderDetail.js';
 import { Owed } from './pages/Owed.js';
 import { Payments } from './pages/Payments.js';
@@ -43,6 +44,7 @@ import { Users } from './pages/Users.js';
  * to catch what these two get wrong.
  */
 const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
+const CUSTOMER_PATHS = ['/customers', '/debtors'];
 const CASH_PATHS = ['/cash', '/day-close'];
 const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
 const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/payments', '/owed'];
@@ -58,6 +60,7 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
   { to: '/suppliers', label: 'Buying', permission: ['supplier.read', 'grn.post'], group: BUYING_PATHS },
   // Stock take and opening stock share one tab; the StockEntryTabs bar switches between them.
   { to: '/count', label: 'Stock entry', permission: ['stock.adjust', 'stock.opening'], group: STOCK_ENTRY_PATHS },
+  { to: '/customers', label: 'Customers', permission: 'customer.read', group: CUSTOMER_PATHS },
   { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
   // A cashier holds only cash.count, finance/auditor only cash.read - no
   // single permission covers everyone who should see this tab, so it takes
@@ -81,7 +84,8 @@ function navTarget(item: { to: string; group?: string[] }, can: (p: string) => b
   if (item.to === '/suppliers') return can('supplier.read') ? '/suppliers' : '/receive';
   if (item.to === '/cash') return can('cash.read') || can('cash.count') || can('cash.move') ? '/cash' : '/day-close';
   if (item.to === '/count') return can('stock.adjust') ? '/count' : '/opening-stock';
-  return can('sale.read') ? '/profit' : item.to;
+  if (item.to === '/reports') return can('sale.read') ? '/profit' : item.to;
+  return item.to;
 }
 
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
@@ -235,6 +239,9 @@ export function App() {
           />
           <Route path="/day-close" element={<Guard permission={['day.close', 'sale.read']} home={home}><DayClose /></Guard>} />
           <Route path="/day-close/:id" element={<Guard permission={['day.close', 'sale.read']} home={home}><ZReportPage /></Guard>} />
+          <Route path="/customers" element={<Guard permission="customer.read" home={home}><Customers /></Guard>} />
+          <Route path="/customers/:id" element={<Guard permission="customer.read" home={home}><CustomerDetailPage /></Guard>} />
+          <Route path="/debtors" element={<Guard permission="customer.read" home={home}><DebtorsPage /></Guard>} />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />

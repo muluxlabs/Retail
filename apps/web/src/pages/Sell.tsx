@@ -24,17 +24,21 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { CustomerPicker } from '../components/CustomerPicker.js';
 import { ReceiptDialog } from '../components/Receipt.js';
+import { ReceiveDialog } from '../components/ReceiveDialog.js';
 import {
   api,
   ApiError,
   type Branch,
+  type CustomerLookup,
   type PaymentType,
   type Product,
   type Receipt,
   type Till,
 } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { useMyBranches } from '../lib/myBranches.js';
 import { basketCents, fromCents, lineCents, parseMoney, settleRows } from '../lib/basketMath.js';
 import { Badge, Button, Card, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
@@ -105,10 +109,13 @@ export function Sell() {
   const [blocked, setBlocked] = useState<Blocked | null>(null);
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<{ data: Receipt; fresh: boolean } | null>(null);
+  const [customer, setCustomer] = useState<CustomerLookup | null>(null);
+  const [receiving, setReceiving] = useState(false);
+  const [receivedNote, setReceivedNote] = useState<string | null>(null);
   const [recent, setRecent] = useState<{ id: string; receiptNo: string; net: number; items: number }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const branches = useAsync(() => api.branches(), []);
+  const branches = useMyBranches();
   const paymentTypes = useAsync(() => api.paymentTypes(), []);
   const tills = useAsync<Till[]>(() => (branchId === '' ? Promise.resolve([]) : api.tills(branchId)), [branchId]);
   const results = useAsync(
@@ -127,9 +134,12 @@ export function Sell() {
 
   // A single branch (a branch manager, a cashier) needs no choosing.
   useEffect(() => {
-    const list = branches.data ?? [];
-    if (branchId === '' && list.length === 1 && list[0] !== undefined) setBranchId(list[0].id);
-  }, [branches.data, branchId]);
+    const list = branches.list;
+    if (branches.loading) return;
+    // A branch remembered on this machine that this person may not use is forgotten.
+    if (branchId !== '' && !list.some((b) => b.id === branchId)) setBranchId('');
+    else if (branchId === '' && list.length === 1 && list[0] !== undefined) setBranchId(list[0].id);
+  }, [branches.list, branches.loading, branchId]);
 
   // Remember the till per branch; with a single till there is nothing to pick.
   useEffect(() => {
@@ -185,7 +195,17 @@ export function Sell() {
   );
   const badReceived = pay.some((p) => p.received.trim() !== '' && parseMoney(p.received) === null);
   const needsTill = (tills.data ?? []).length > 0 && tillId === '';
-  const canComplete = cartOk && netCents > 0 && tender.problem === null && !badReceived && !needsTill && !busy;
+  // Charging a customer's account: say whose, and stay inside their credit.
+  const accountCents = pay.reduce((sum, p, i) => sum + (p.typeId === 'account' ? (tender.rows[i]?.appliedCents ?? 0) : 0), 0);
+  const accountProblem =
+    accountCents === 0
+      ? null
+      : customer === null
+        ? 'Choose the customer whose account this is charged to.'
+        : accountCents > Math.round(customer.available * 100)
+          ? `${customer.name} has ${money(customer.available)} of credit left.`
+          : null;
+  const canComplete = cartOk && netCents > 0 && tender.problem === null && accountProblem === null && !badReceived && !needsTill && !busy;
 
   function reset() {
     setCart([]);
@@ -198,6 +218,7 @@ export function Sell() {
     setQuickAdding(null);
     setCode('');
     setSearch('');
+    setCustomer(null);
   }
 
   function addToCart(item: Omit<CartLine, 'qty' | 'price' | 'discount'>) {
@@ -351,6 +372,7 @@ export function Sell() {
           };
         }),
         overrideNegative,
+        customerId: customer?.id ?? null,
       });
       // The till is free for the next customer the moment the sale is on the books.
       reset();
@@ -395,6 +417,9 @@ export function Sell() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
+          {can('customer.receive') && branchId !== '' && (
+            <Button onClick={() => setReceiving(true)}>Take a payment on account</Button>
+          )}
           <label className="block">
             <span className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">Branch</span>
             <select
@@ -407,7 +432,7 @@ export function Sell() {
               className="border-ink-200 focus:border-accent-500 min-w-40 rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none disabled:opacity-60"
             >
               <option value="">Select a branch…</option>
-              {(branches.data ?? []).map((b: Branch) => (
+              {branches.list.map((b: Branch) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -700,6 +725,10 @@ export function Sell() {
               </dl>
 
               <div className="border-ink-100 mt-4 border-t pt-3">
+                <CustomerPicker value={customer} onChange={setCustomer} />
+              </div>
+
+              <div className="border-ink-100 mt-3 border-t pt-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-ink-600 text-[11px] font-medium uppercase tracking-wider">Payment</span>
                   {pay.length < 4 && (
@@ -826,6 +855,9 @@ export function Sell() {
                   {error}
                 </div>
               )}
+              {accountProblem !== null && netCents > 0 && (
+                <p className="mt-3 text-[12px] text-amber-800" data-testid="account-problem">{accountProblem}</p>
+              )}
               {needsTill && cart.length > 0 && (
                 <p className="mt-3 text-[12px] text-amber-800">Choose which till is taking this sale.</p>
               )}
@@ -871,6 +903,22 @@ export function Sell() {
         </div>
       )}
 
+      {receivedNote !== null && (
+        <div className="bg-accent-50 border-accent-300/60 text-accent-700 rounded-lg border px-3 py-2 text-[12.5px]" role="status" data-testid="received-note">
+          {receivedNote}
+        </div>
+      )}
+      {receiving && (
+        <ReceiveDialog
+          branchId={branchId}
+          {...(tillId === '' ? {} : { defaultCashPointId: tillId })}
+          onClose={() => setReceiving(false)}
+          onDone={(no) => {
+            setReceiving(false);
+            setReceivedNote(`Payment ${no} recorded on the customer's account.`);
+          }}
+        />
+      )}
       {receipt !== null && (
         <ReceiptDialog
           receipt={receipt.data}

@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react';
 import { StockEntryTabs } from '../components/StockEntryTabs.js';
 import { api, ApiError, type Branch } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { useMyBranches } from '../lib/myBranches.js';
 import { Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
 interface Row {
@@ -46,7 +47,7 @@ export function Count() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CountResult | null>(null);
 
-  const branches = useAsync(() => api.branches(), []);
+  const branches = useMyBranches();
   const stock = useAsync(
     () => (branchId === '' ? Promise.resolve({ items: [] }) : api.stock({ branchId, limit: 500 })),
     [branchId],
@@ -131,7 +132,7 @@ export function Count() {
           className="border-ink-200 focus:border-accent-500 rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
         >
           <option value="">Select a branch…</option>
-          {(branches.data ?? []).map((b: Branch) => (
+          {branches.list.map((b: Branch) => (
             <option key={b.id} value={b.id}>
               {b.name}
             </option>

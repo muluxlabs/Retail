@@ -35,7 +35,8 @@ export type ExceptionKind =
   | 'void_after_tender'
   | 'unreviewed_product'
   | 'stock_reset'
-  | 'opening_stock';
+  | 'opening_stock'
+  | 'credit_limit_change';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 

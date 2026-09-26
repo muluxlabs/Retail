@@ -67,6 +67,14 @@ export function ReceiptSheet({ receipt }: { receipt: ReceiptData }) {
           <span>Cashier</span>
           <span>{receipt.cashier.name}</span>
         </div>
+        {receipt.customer !== null && (
+          <div className="flex justify-between">
+            <span>Customer</span>
+            <span>
+              {receipt.customer.name} ({receipt.customer.code})
+            </span>
+          </div>
+        )}
         {receipt.till !== null && (
           <div className="flex justify-between">
             <span>Till</span>

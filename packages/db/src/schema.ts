@@ -42,7 +42,8 @@ export type ExceptionKind =
   | 'void_after_tender'
   | 'unreviewed_product'
   | 'stock_reset'
-  | 'opening_stock';
+  | 'opening_stock'
+  | 'credit_limit_change';
 
 export type ProductReviewState = 'approved' | 'pending';
 
@@ -317,7 +318,9 @@ export type CashReason =
   | 'petty_disbursement'
   | 'write_off'
   | 'supplier_payment'
-  | 'supplier_payment_void';
+  | 'supplier_payment_void'
+  | 'customer_payment'
+  | 'customer_payment_void';
 
 /** One row per place cash can sit. See migration 005. */
 export interface CashPointTable {
@@ -412,6 +415,7 @@ export interface SaleTable {
   tendered_total: number;
   change_given: ColumnType<number, number | undefined, never>;
   currency: ColumnType<string, string | undefined, never>;
+  customer_id: ColumnType<string | null, string | null | undefined, never>;
 }
 
 export interface SaleLineTable {
@@ -622,6 +626,48 @@ export interface OpeningStockLineTable {
   movement_seq: number;
 }
 
+export interface CustomerTable {
+  id: Generated<string>;
+  code: Generated<string>;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  id_number: string | null;
+  credit_limit: ColumnType<number, number | undefined, number>;
+  credit_days: ColumnType<number, number | undefined, number>;
+  notes: string | null;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_by: string | null;
+  created_at: Timestamp;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface CustomerPaymentTable {
+  id: string;
+  receipt_no: string;
+  customer_id: string;
+  branch_id: string;
+  amount: number;
+  payment_type_id: string;
+  reference: string | null;
+  cash_point_id: string | null;
+  received_at: ColumnType<Date, Date | string, never>;
+  note: string | null;
+  recorded_by: string;
+  recorded_at: Timestamp;
+  voided_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  voided_by: ColumnType<string | null, string | null | undefined, string | null>;
+  void_reason: ColumnType<string | null, string | null | undefined, string | null>;
+}
+
+export interface CustomerBalanceView {
+  customer_id: string;
+  charged: number;
+  paid: number;
+  balance: number;
+}
+
 export interface DayCloseTable {
   id: string;
   close_no: string;
@@ -673,6 +719,9 @@ export interface Database {
   purchase_return: PurchaseReturnTable;
   purchase_return_line: PurchaseReturnLineTable;
   day_close: DayCloseTable;
+  customer: CustomerTable;
+  customer_payment: CustomerPaymentTable;
+  customer_balance: CustomerBalanceView;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

@@ -57,6 +57,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   unreviewed_product: 'Product added at the till',
   stock_reset: 'Branch stock set to zero',
   opening_stock: 'Opening stock introduced',
+  credit_limit_change: 'Credit limit raised',
 };
 
 /**
@@ -75,6 +76,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   unreviewed_product: 'A cashier could not find this item and added it to finish the sale.',
   stock_reset: 'A manager zeroed every product at a branch. It cannot be undone - review the reason given.',
   opening_stock: 'Stock was brought onto the books with no supplier invoice behind it. Check the quantities and costs against a count.',
+  credit_limit_change: 'A customer was allowed to owe more. Check who raised it and that the customer pays on time.',
 };
 
 // -- primitives --------------------------------------------------------------

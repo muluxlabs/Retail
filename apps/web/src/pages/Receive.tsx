@@ -22,6 +22,7 @@ import { newKey, parseLines, PurchaseLines, type PurchaseLine } from '../compone
 import { api, ApiError, type OrderDetail } from '../lib/api.js';
 import { parseCost, parseMoney, parseQty, fromCents } from '../lib/basketMath.js';
 import { shortDate } from '../lib/buying.js';
+import { useMyBranches } from '../lib/myBranches.js';
 import { Badge, Button, Card, Empty, Spinner, money, useAsync } from '../lib/ui.js';
 
 const field = 'border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none';
@@ -49,7 +50,7 @@ function linesFromOrder(o: OrderDetail): PurchaseLine[] {
 
 export function Receive() {
   const [params] = useSearchParams();
-  const branches = useAsync(() => api.branches(), []);
+  const branches = useMyBranches();
   const suppliers = useAsync(() => api.suppliers({}), []);
 
   const [branchId, setBranchId] = useState('');
@@ -66,9 +67,9 @@ export function Receive() {
   const [done, setDone] = useState<{ id: string; grnNo: string; totalCost: number; supplier: string } | null>(null);
 
   useEffect(() => {
-    const list = branches.data ?? [];
+    const list = branches.list;
     if (branchId === '' && list.length === 1 && list[0] !== undefined) setBranchId(list[0].id);
-  }, [branches.data, branchId]);
+  }, [branches.list, branchId]);
 
   // An order named in the address (from its own page) sets the supplier and branch.
   const fromUrl = params.get('poId');
@@ -174,7 +175,7 @@ export function Receive() {
             <span className={label}>Branch receiving</span>
             <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setPoId(''); }} className={field} aria-label="Branch receiving">
               <option value="">Choose a branch…</option>
-              {(branches.data ?? []).map((b) => (
+              {branches.list.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>

@@ -122,6 +122,16 @@ export const CASH_REASON_TERMS: Record<string, Term> = {
     short: 'Paid to supplier',
     meaning: 'Cash taken out to pay a supplier; the payment is on the supplier account.',
   },
+  customer_payment: {
+    label: 'Received from customer',
+    short: 'From customer',
+    meaning: 'Cash a customer paid towards what they owe on account.',
+  },
+  customer_payment_void: {
+    label: 'Customer payment voided',
+    short: 'Payment voided',
+    meaning: 'A cash payment from a customer recorded in error, taken back out.',
+  },
   supplier_payment_void: {
     label: 'Supplier payment voided',
     short: 'Payment voided',

@@ -37,6 +37,8 @@ import {
   PriceOverrideRequired,
   priceLine,
   settlePayments,
+  checkCredit,
+  InvalidCustomer,
   TillRequired,
   toCents,
   totalBasket,
@@ -80,6 +82,8 @@ export interface CheckoutInput {
   canOverridePrice: boolean;
   /** The caller asked for a negative-stock override AND holds stock.override. */
   overrideNegative: boolean;
+  /** A named customer. Required when any of the sale is paid "on account". */
+  customerId?: string | null | undefined;
 }
 
 export interface ReceiptView {
@@ -89,6 +93,7 @@ export interface ReceiptView {
   branch: { id: string; code: string; name: string };
   cashier: { id: string; name: string };
   till: string | null;
+  customer: { id: string; code: string; name: string } | null;
   currency: string;
   lines: {
     lineNo: number;
@@ -236,6 +241,24 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       ...(p.tendered === undefined ? {} : { tendered: p.tendered }),
     })),
   );
+  // -- a sale charged to a customer's account ---------------------------------------------------------
+  const accountCents = input.payments.reduce((sum, p) => sum + (p.paymentTypeId === 'account' ? toCents(p.amount) : 0), 0);
+  let customerId: string | null = null;
+  if (input.customerId !== undefined && input.customerId !== null) {
+    // Locked, so two tills charging the same customer at once cannot both squeeze under the limit.
+    const c = await sql<{ id: string; name: string; isActive: boolean; limit: number }>`
+      SELECT id, name, is_active AS "isActive", credit_limit AS "limit" FROM customer WHERE id = ${input.customerId}::uuid FOR UPDATE`.execute(tx);
+    const customer = c.rows[0];
+    if (customer === undefined || !customer.isActive) throw new InvalidCustomer('That customer is not available.');
+    if (accountCents > 0) {
+      const owed = await tx.selectFrom('customer_balance').select('balance').where('customer_id', '=', customer.id).executeTakeFirst();
+      checkCredit(customer.name, toCents(Number(owed?.balance ?? 0)), toCents(Number(customer.limit)), accountCents);
+    }
+    customerId = customer.id;
+  } else if (accountCents > 0) {
+    throw new InvalidBasket('Choose the customer whose account this is charged to.');
+  }
+
   const cashCents = input.payments.reduce(
     (sum, p) => sum + (typeById.get(p.paymentTypeId)?.is_cash === true ? toCents(p.amount) : 0),
     0,
@@ -328,6 +351,7 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       terminal_id: input.terminalId,
       cash_point_id: cashPointId,
       cashier_id: input.cashierId,
+      customer_id: customerId,
       occurred_at: occurredAt,
       gross_total: fromCents(totals.grossCents),
       discount_total: fromCents(totals.discountCents),
@@ -470,6 +494,7 @@ export async function getReceipt(db: Db | Tx, saleId: string): Promise<ReceiptVi
       'person.id as cashierId',
       'person.full_name as cashierName',
       'cash_point.name as tillName',
+      'sale.customer_id as customerId',
     ])
     .where('sale.id', '=', saleId)
     .executeTakeFirstOrThrow();
@@ -510,6 +535,10 @@ export async function getReceipt(db: Db | Tx, saleId: string): Promise<ReceiptVi
 
   const s = new Map(settings.map((r) => [r.key, r.value]));
   const width = Number(s.get('receipt_width_mm'));
+  const customer =
+    sale.customerId === null
+      ? null
+      : ((await db.selectFrom('customer').select(['id', 'code', 'name']).where('id', '=', sale.customerId).executeTakeFirst()) ?? null);
 
   return {
     id: sale.id,
@@ -518,6 +547,7 @@ export async function getReceipt(db: Db | Tx, saleId: string): Promise<ReceiptVi
     branch: { id: sale.branchId, code: sale.branchCode, name: sale.branchName },
     cashier: { id: sale.cashierId, name: sale.cashierName },
     till: sale.tillName,
+    customer,
     currency: sale.currency,
     lines: lines.map((l) => ({
       ...l,

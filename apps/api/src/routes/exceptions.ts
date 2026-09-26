@@ -27,6 +27,7 @@ const KINDS = [
   'unreviewed_product',
   'stock_reset',
   'opening_stock',
+  'credit_limit_change',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

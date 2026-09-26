@@ -637,6 +637,89 @@ export interface ZReport extends ZSummary {
   };
 }
 
+export interface CustomerRow {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  creditLimit: number;
+  creditDays: number;
+  isActive: boolean;
+  charged: number;
+  paid: number;
+  balance: number;
+  available: number;
+  lastSale: string | null;
+}
+
+export interface CustomerLookup {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  creditLimit: number;
+  balance: number;
+  available: number;
+}
+
+export interface CustomerInput {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  idNumber?: string | null;
+  creditLimit: number;
+  creditDays: number;
+  notes?: string | null;
+}
+
+export interface CustomerDetail {
+  customer: {
+    id: string;
+    code: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    idNumber: string | null;
+    creditLimit: number;
+    creditDays: number;
+    notes: string | null;
+    isActive: boolean;
+  };
+  available: number;
+  account: {
+    balance: number;
+    charged: number;
+    paid: number;
+    ageing: {
+      buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+      total: number;
+      credit: number;
+      items: { saleId: string; receiptNo: string; day: string; dueDay: string; amount: number; outstanding: number; daysOverdue: number }[];
+    };
+    statement: { at: string; kind: 'sale' | 'payment' | 'void'; ref: string; description: string; id: string; debit: number; credit: number; balance: number }[];
+  };
+}
+
+export interface Debtors {
+  asOf: string;
+  totals: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number; total: number; credit: number };
+  customers: {
+    customerId: string;
+    code: string;
+    name: string;
+    phone: string | null;
+    creditLimit: number;
+    owed: number;
+    credit: number;
+    overdue: number;
+    oldestOverdueDays: number;
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  }[];
+}
+
 export interface PaymentType {
   id: string;
   name: string;
@@ -659,6 +742,8 @@ export interface CheckoutBody {
   lines: { productId: string; packId: string; qtyPacks: number; unitPrice?: number; discount?: number }[];
   payments: { paymentTypeId: string; amount: number; tendered?: number; reference?: string | null }[];
   overrideNegative: boolean;
+  /** A named customer; required when any of the sale is paid on account. */
+  customerId?: string | null;
 }
 
 export interface ReceiptLine {
@@ -680,6 +765,7 @@ export interface Receipt {
   branch: { id: string; code: string; name: string };
   cashier: { id: string; name: string };
   till: string | null;
+  customer: { id: string; code: string; name: string } | null;
   currency: string;
   lines: ReceiptLine[];
   gross: number;
@@ -787,7 +873,8 @@ export type ExceptionKind =
   | 'void_after_tender'
   | 'unreviewed_product'
   | 'stock_reset'
-  | 'opening_stock';
+  | 'opening_stock'
+  | 'credit_limit_change';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1417,6 +1504,38 @@ export const api = {
   zReports: (params: { branchId?: string; limit?: number } = {}) => request<{ items: ZSummary[] }>(`/api/day-close${qs({ ...params })}`),
 
   zReport: (id: string) => request<ZReport>(`/api/day-close/${id}`),
+
+  customers: (params: { q?: string; includeInactive?: boolean; owingOnly?: boolean } = {}) =>
+    request<{ items: CustomerRow[] }>(`/api/customers${qs({ ...params })}`),
+
+  customerLookup: (q: string) => request<{ items: CustomerLookup[] }>(`/api/customers/lookup${qs({ q })}`),
+
+  customer: (id: string) => request<CustomerDetail>(`/api/customers/${id}`),
+
+  createCustomer: (body: CustomerInput) =>
+    request<{ id: string; code: string; name: string }>('/api/customers', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateCustomer: (id: string, body: Partial<CustomerInput> & { isActive?: boolean }) =>
+    request<{ ok: true }>(`/api/customers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  debtors: () => request<Debtors>('/api/debtors'),
+
+  customerCashPoints: (branchId: string) =>
+    request<{ items: { id: string; name: string; kind: string }[] }>(`/api/customer-payments/cash-points${qs({ branchId })}`),
+
+  receiveFromCustomer: (body: {
+    id: string;
+    customerId: string;
+    branchId: string;
+    amount: number;
+    paymentTypeId: string;
+    reference?: string | null;
+    cashPointId?: string | null;
+    note?: string | null;
+  }) => request<{ id: string; receiptNo: string; replayed: boolean }>('/api/customer-payments', { method: 'POST', body: JSON.stringify(body) }),
+
+  voidCustomerPayment: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/customer-payments/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
 
   businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
 
