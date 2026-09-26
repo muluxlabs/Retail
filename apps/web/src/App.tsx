@@ -13,6 +13,7 @@ import { Ledger } from './pages/Ledger.js';
 import { ChangePassword, Login } from './pages/Login.js';
 import { NewOrder, Orders } from './pages/Orders.js';
 import { OpeningStock, OpeningStockDetail } from './pages/OpeningStock.js';
+import { NewReturn, ReturnDetailPage, Returns } from './pages/Returns.js';
 import { OrderDetail } from './pages/OrderDetail.js';
 import { Owed } from './pages/Owed.js';
 import { Payments } from './pages/Payments.js';
@@ -42,7 +43,7 @@ import { Users } from './pages/Users.js';
  */
 const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
 const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
-const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/payments', '/owed'];
+const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/payments', '/owed'];
 
 /** A path is inside a group when it is the group's path or below it (/orders/new is inside /orders). */
 const inGroup = (group: string[] | undefined, pathname: string): boolean =>
@@ -212,6 +213,9 @@ export function App() {
           <Route path="/orders/:id" element={<Guard permission="supplier.read" home={home}><OrderDetail /></Guard>} />
           <Route path="/receive" element={<Guard permission="grn.post" home={home}><Receive /></Guard>} />
           <Route path="/receive/:id" element={<Guard permission="supplier.read" home={home}><ReceiveDetail /></Guard>} />
+          <Route path="/returns" element={<Guard permission="supplier.read" home={home}><Returns /></Guard>} />
+          <Route path="/returns/new" element={<Guard permission="purchase.return" home={home}><NewReturn /></Guard>} />
+          <Route path="/returns/:id" element={<Guard permission="supplier.read" home={home}><ReturnDetailPage /></Guard>} />
           <Route path="/payments" element={<Guard permission="supplier.read" home={home}><Payments /></Guard>} />
           <Route path="/owed" element={<Guard permission="supplier.read" home={home}><Owed /></Guard>} />
           <Route path="/opening-stock" element={<Guard permission="stock.opening" home={home}><OpeningStock /></Guard>} />

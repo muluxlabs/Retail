@@ -117,6 +117,16 @@ export const CASH_REASON_TERMS: Record<string, Term> = {
     short: 'Petty cash paid',
     meaning: 'Small expenses paid from petty cash.',
   },
+  supplier_payment: {
+    label: 'Paid to supplier',
+    short: 'Paid to supplier',
+    meaning: 'Cash taken out to pay a supplier; the payment is on the supplier account.',
+  },
+  supplier_payment_void: {
+    label: 'Supplier payment voided',
+    short: 'Payment voided',
+    meaning: 'A cash payment to a supplier recorded in error, put back.',
+  },
   write_off: {
     label: 'Cash written off',
     short: 'Written off',
@@ -127,6 +137,9 @@ export const CASH_REASON_TERMS: Record<string, Term> = {
 /** What the source document of a movement is called on paper. */
 export const DOC_TYPE_TERMS: Record<string, string> = {
   GRN: 'Goods received note',
+  PRN: 'Purchase return note',
+  OPENING: 'Opening stock',
+  SUPPLIER_PAY: 'Supplier payment',
   SALE: 'Sales receipt',
   TRANSFER: 'Inter-branch transfer',
   TRANSFER_CANCEL: 'Transfer cancelled',
@@ -134,7 +147,6 @@ export const DOC_TYPE_TERMS: Record<string, string> = {
   CASH_MOVE: 'Cash movement',
   CASH_COUNT: 'Cash count',
   RESET: 'Branch stock reset',
-  OPENING: 'Opening stock',
 };
 
 /** Falls back to a readable version of an unknown value rather than showing it raw. */

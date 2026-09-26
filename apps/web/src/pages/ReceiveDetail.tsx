@@ -8,11 +8,13 @@ import { Link, useParams } from 'react-router-dom';
 
 import { BuyingTabs } from '../components/BuyingTabs.js';
 import { api } from '../lib/api.js';
+import { useAuth } from '../lib/auth.js';
 import { packCost, shortDate, shortDateTime } from '../lib/buying.js';
 import { Button, Card, ErrorNote, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
 export function ReceiveDetail() {
   const { id = '' } = useParams();
+  const { can } = useAuth();
   const grn = useAsync(() => api.goodsReceivedNote(id), [id]);
   if (grn.error !== undefined) return <ErrorNote error={grn.error} />;
   const g = grn.data;
@@ -60,9 +62,14 @@ export function ReceiveDetail() {
             {g.invoiceDate !== null && ` dated ${shortDate(g.invoiceDate)}`}
           </p>
         </div>
-        <Button onClick={() => window.print()} className="no-print">
-          Print
-        </Button>
+        <div className="no-print flex gap-2">
+          {can('purchase.return') && (
+            <Link to={`/returns/new?grnId=${g.id}`} className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset">
+              Return goods
+            </Link>
+          )}
+          <Button onClick={() => window.print()}>Print</Button>
+        </div>
       </div>
       {g.notes !== null && <p className="text-ink-500 text-[12.5px]">{g.notes}</p>}
 

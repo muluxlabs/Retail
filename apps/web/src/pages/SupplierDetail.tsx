@@ -220,7 +220,7 @@ export function SupplierDetail() {
             <div className="border-ink-100 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
               <div>
                 <h2 className="text-[13px] font-semibold tracking-tight">Account statement</h2>
-                <p className="text-ink-400 text-[11.5px]">Goods received add to what is owed; payments take it down.</p>
+                <p className="text-ink-400 text-[11.5px]">Goods received add to what is owed; payments and goods returned take it down.</p>
               </div>
               <div className="no-print flex gap-2">
                 <Button onClick={exportStatement} disabled={account.statement.length === 0}>
@@ -240,7 +240,7 @@ export function SupplierDetail() {
                       <th className="px-2 py-2 font-medium">Reference</th>
                       <th className="px-2 py-2 font-medium">Description</th>
                       <th className="px-2 py-2 text-right font-medium">Goods received</th>
-                      <th className="px-2 py-2 text-right font-medium">Payments</th>
+                      <th className="px-2 py-2 text-right font-medium">Payments and returns</th>
                       <th className="px-4 py-2 text-right font-medium">Balance</th>
                     </tr>
                   </thead>
@@ -251,6 +251,10 @@ export function SupplierDetail() {
                         <td className="px-2 py-1.5 font-mono text-[12px]">
                           {e.kind === 'received' ? (
                             <Link to={`/receive/${e.id}`} className="hover:text-accent-700 hover:underline">
+                              {e.ref}
+                            </Link>
+                          ) : e.kind === 'return' ? (
+                            <Link to={`/returns/${e.id}`} className="hover:text-accent-700 hover:underline">
                               {e.ref}
                             </Link>
                           ) : (
@@ -279,7 +283,7 @@ export function SupplierDetail() {
                         Closing balance · {balanceWords(account.balance)}
                       </td>
                       <td className="tnum px-2 py-2 text-right">{money(account.receivedCost)}</td>
-                      <td className="tnum px-2 py-2 text-right">{money(account.paid)}</td>
+                      <td className="tnum px-2 py-2 text-right">{money(account.paid + account.returnedCost)}</td>
                       <td className="tnum px-4 py-2 text-right">{money(account.balance)}</td>
                     </tr>
                   </tfoot>

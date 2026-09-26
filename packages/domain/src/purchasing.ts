@@ -175,10 +175,10 @@ export function ageDeliveries(deliveries: readonly Delivery[], paidCents: number
 export interface StatementEntry {
   /** Sort key: when it happened. */
   at: string;
-  kind: 'received' | 'payment' | 'void';
+  kind: 'received' | 'payment' | 'void' | 'return';
   /** Increases what is owed (goods received). */
   debitCents: number;
-  /** Decreases what is owed (a payment). */
+  /** Decreases what is owed (a payment, or a credit for goods returned). */
   creditCents: number;
 }
 

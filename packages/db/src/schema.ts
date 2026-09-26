@@ -315,7 +315,9 @@ export type CashReason =
   | 'bank_deposit'
   | 'cash_variance'
   | 'petty_disbursement'
-  | 'write_off';
+  | 'write_off'
+  | 'supplier_payment'
+  | 'supplier_payment_void';
 
 /** One row per place cash can sit. See migration 005. */
 export interface CashPointTable {
@@ -545,6 +547,7 @@ export interface SupplierPaymentTable {
   voided_at: SetOnce<Date | string>;
   voided_by: SetOnce<string>;
   void_reason: SetOnce<string>;
+  cash_point_id: ColumnType<string | null, string | null | undefined, never>;
 }
 
 export interface SupplierPaymentProofTable {
@@ -564,6 +567,35 @@ export interface SupplierBalanceView {
   received_cost: number;
   paid: number;
   balance: number;
+  returned_cost: number;
+}
+
+export interface PurchaseReturnTable {
+  id: string;
+  prn_no: string;
+  supplier_id: string;
+  branch_id: string;
+  grn_id: string | null;
+  returned_by: string;
+  returned_at: ColumnType<Date, Date | string, never>;
+  reason: string;
+  credit_note_no: string | null;
+  total_cost: number;
+  recorded_at: Timestamp;
+}
+
+export interface PurchaseReturnLineTable {
+  id: Generated<string>;
+  return_id: string;
+  line_no: number;
+  grn_line_id: string | null;
+  product_id: string;
+  pack_id: string;
+  qty_packs: number;
+  qty_base: number;
+  unit_cost: number;
+  line_total: number;
+  movement_seq: number;
 }
 
 export interface OpeningStockTable {
@@ -615,6 +647,8 @@ export interface Database {
   supplier_balance: SupplierBalanceView;
   opening_stock: OpeningStockTable;
   opening_stock_line: OpeningStockLineTable;
+  purchase_return: PurchaseReturnTable;
+  purchase_return_line: PurchaseReturnLineTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

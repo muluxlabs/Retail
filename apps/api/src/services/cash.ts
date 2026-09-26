@@ -117,7 +117,7 @@ export async function listCashPoints(
   return query.orderBy('branch.name', 'asc').orderBy('cash_point.kind', 'asc').execute();
 }
 
-async function onHand(db: Db | Tx, cashPointId: string): Promise<number> {
+export async function onHand(db: Db | Tx, cashPointId: string): Promise<number> {
   const row = await db
     .selectFrom('cash_on_hand')
     .select('amount')
@@ -144,7 +144,7 @@ interface PostInput {
  * stock ledger's postMovementInTx - a resynced event is a no-op, not a
  * duplicate.
  */
-async function post(tx: Tx, input: PostInput): Promise<{ seq: number; amountAfter: number }> {
+export async function post(tx: Tx, input: PostInput): Promise<{ seq: number; amountAfter: number }> {
   const eventId = input.eventId ?? crypto.randomUUID();
   const occurredAt = input.occurredAt ?? new Date();
 

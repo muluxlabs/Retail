@@ -74,6 +74,7 @@ export function RecordPaymentDialog({
   const [date, setDate] = useState(todayLocal());
   const [forWhat, setForWhat] = useState<string>(grnId !== null ? `grn:${grnId}` : poId !== null ? `po:${poId}` : '');
   const [note, setNote] = useState('');
+  const [cashPointId, setCashPointId] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,9 +94,15 @@ export function RecordPaymentDialog({
 
   const chosen = supplierMethods.find((m) => m.id === method);
   const cash = chosen?.isCash === true;
+  const cashPoints = useAsync(() => api.supplierCashPoints(), []);
+  const cashPointList = cashPoints.data?.items ?? [];
+  const cashPoint = cashPointList.find((c) => c.id === cashPointId);
   const amountNum = parseMoney(amount);
   const referenceMissing = !cash && reference.trim() === '';
-  const canSubmit = supplier !== '' && amountNum !== null && amountNum > 0 && method !== '' && !referenceMissing && !busy;
+  // Cash leaves a named cash point; one that does not hold enough cannot pay.
+  const cashPointMissing = cash && cashPointList.length > 0 && cashPointId === '';
+  const cashShort = cash && cashPoint !== undefined && amountNum !== null && amountNum > cashPoint.amount + 0.004;
+  const canSubmit = supplier !== '' && amountNum !== null && amountNum > 0 && method !== '' && !referenceMissing && !cashPointMissing && !cashShort && !busy;
 
   async function submit() {
     if (!canSubmit || amountNum === null) return;
@@ -114,6 +121,7 @@ export function RecordPaymentDialog({
         ...(kind === 'po' ? { poId: id ?? null } : {}),
         ...(kind === 'grn' ? { grnId: id ?? null } : {}),
         ...(note.trim() === '' ? {} : { note: note.trim() }),
+        ...(cash && cashPointId !== '' ? { cashPointId } : {}),
       });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -187,6 +195,23 @@ export function RecordPaymentDialog({
             />
           </label>
         </div>
+
+        {cash && cashPointList.length > 0 && (
+          <label className="block">
+            <span className={label}>Paid out of</span>
+            <select value={cashPointId} onChange={(e) => setCashPointId(e.target.value)} aria-label="Paid out of cash point" className={field}>
+              <option value="">Choose the safe, petty cash or till…</option>
+              {cashPointList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.branchName} · {c.name} · holds {money(c.amount)}
+                </option>
+              ))}
+            </select>
+            {cashShort && cashPoint !== undefined && (
+              <span className="mt-1 block text-[12px] text-red-700">{cashPoint.name} holds only {money(cashPoint.amount)}.</span>
+            )}
+          </label>
+        )}
 
         <label className="block">
           <span className={label}>What is it for?</span>
@@ -309,6 +334,12 @@ export function PaymentDetailDialog({ id, onClose, onChanged }: { id: string; on
             <dd>
               {p.method}
               {p.reference !== null && <span className="text-ink-500"> · reference {p.reference}</span>}
+              {p.cashPointName !== null && (
+                <span className="text-ink-500">
+                  {' '}
+                  · out of {p.cashPointBranch} {p.cashPointName}
+                </span>
+              )}
             </dd>
             <dt className="text-ink-500">Date paid</dt>
             <dd>{shortDateTime(p.paidAt)}</dd>

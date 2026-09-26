@@ -23,6 +23,7 @@ import {
   poStatus,
   receiveGoods,
   recordPayment,
+  returnGoods,
   supplierAccount,
   voidPayment,
   type PoPayment,
@@ -96,6 +97,20 @@ const paymentBody = z.object({
   poId: z.uuid().nullable().optional(),
   grnId: z.uuid().nullable().optional(),
   note: optText(500),
+  cashPointId: z.uuid().nullable().optional(),
+});
+
+const returnBody = z.object({
+  id: z.uuid(),
+  supplierId: z.uuid(),
+  branchId: z.uuid(),
+  grnId: z.uuid().nullable().optional(),
+  reason: text(300).min(3, 'Say why the goods are going back.'),
+  creditNoteNo: optText(60),
+  lines: z
+    .array(z.object({ productId: z.uuid(), packId: z.uuid(), qtyPacks, unitCost: unitCost.nullable().optional(), grnLineId: z.uuid().nullable().optional() }))
+    .min(1, 'Add at least one item.')
+    .max(300),
 });
 
 const reasonBody = z.object({ reason: text(300).min(5, 'Say why, in a few words.') });
@@ -543,7 +558,9 @@ export async function registerSupplierRoutes(app: FastifyInstance): Promise<void
     assertInScope(request, String(head['branchId']));
     const lines = await sql<Record<string, unknown>>`
       SELECT l.line_no AS "lineNo", l.product_id AS "productId", p.sku, p.name, pk.label AS "packLabel", l.qty_packs AS "qtyPacks", l.qty_base AS "qtyBase",
-             l.unit_cost AS "unitCost", l.line_total AS "lineTotal", ol.unit_cost AS "orderedUnitCost", ol.qty_packs AS "orderedPacks"
+             l.unit_cost AS "unitCost", l.line_total AS "lineTotal", ol.unit_cost AS "orderedUnitCost", ol.qty_packs AS "orderedPacks",
+             l.id, l.pack_id AS "packId",
+             coalesce((SELECT sum(r.qty_base) FROM purchase_return_line r WHERE r.grn_line_id = l.id), 0) AS "returnedBase"
       FROM goods_received_line l JOIN product p ON p.id = l.product_id JOIN product_pack pk ON pk.id = l.pack_id
       LEFT JOIN purchase_order_line ol ON ol.id = l.po_line_id
       WHERE l.grn_id = ${id}::uuid ORDER BY l.line_no`.execute(app.db);
@@ -555,6 +572,7 @@ export async function registerSupplierRoutes(app: FastifyInstance): Promise<void
         ...l, qtyPacks: n(l['qtyPacks']), qtyBase: n(l['qtyBase']), unitCost: n(l['unitCost']), lineTotal: round2(l['lineTotal']),
         orderedUnitCost: l['orderedUnitCost'] === null ? null : n(l['orderedUnitCost']),
         orderedPacks: l['orderedPacks'] === null ? null : n(l['orderedPacks']),
+        returnedBase: n(l['returnedBase']),
       })),
     };
   });
@@ -575,6 +593,7 @@ export async function registerSupplierRoutes(app: FastifyInstance): Promise<void
       poId: b.poId ?? null,
       grnId: b.grnId ?? null,
       note: b.note ?? null,
+      cashPointId: b.cashPointId ?? null,
       recordedBy: request.user!.personId,
     });
     return reply.status(r.replayed ? 200 : 201).send(r);
@@ -617,14 +636,89 @@ export async function registerSupplierRoutes(app: FastifyInstance): Promise<void
     };
   });
 
+  /** Where cash can be paid out of, and what each holds now. */
+  app.get('/supplier-payments/cash-points', { onRequest: [app.requirePermission('supplier.pay')] }, async () => {
+    const rows = await sql<Record<string, unknown>>`
+      SELECT cp.id, cp.name, cp.kind, b.id AS "branchId", b.name AS "branchName", coalesce(h.amount, 0) AS amount
+      FROM cash_point cp JOIN branch b ON b.id = cp.branch_id LEFT JOIN cash_on_hand h ON h.cash_point_id = cp.id
+      WHERE cp.is_active
+      ORDER BY b.name, CASE cp.kind WHEN 'safe' THEN 0 WHEN 'petty' THEN 1 WHEN 'till' THEN 2 ELSE 3 END, cp.name`.execute(app.db);
+    return { items: rows.rows.map((r) => ({ ...r, amount: round2(r['amount']) })) };
+  });
+
+  // ======================================================================================================
+  // returns to suppliers
+  // ======================================================================================================
+
+  app.post('/purchase-returns', { onRequest: [app.requirePermission('purchase.return')] }, async (request, reply) => {
+    const b = parseBody(returnBody, request.body);
+    assertInScope(request, b.branchId);
+    const r = await returnGoods(app.db, {
+      id: b.id,
+      supplierId: b.supplierId,
+      branchId: b.branchId,
+      grnId: b.grnId ?? null,
+      returnedBy: request.user!.personId,
+      reason: b.reason,
+      creditNoteNo: b.creditNoteNo ?? null,
+      lines: b.lines,
+    });
+    return reply.status(r.replayed ? 200 : 201).send(r);
+  });
+
+  app.get('/purchase-returns', { onRequest: [app.requirePermission('supplier.read')] }, async (request) => {
+    const q = parseQuery(docQuery, request.query);
+    const limitTo = scopedBranchIds(request);
+    if (q.branchId !== undefined) assertInScope(request, q.branchId);
+    const rows = await sql<Record<string, unknown>>`
+      SELECT r.id, r.prn_no AS "prnNo", r.returned_at AS "returnedAt", r.total_cost AS "totalCost", r.reason, r.credit_note_no AS "creditNoteNo",
+             s.id AS "supplierId", s.name AS "supplierName", b.id AS "branchId", b.name AS "branchName", g.grn_no AS "grnNo", pe.full_name AS "returnedByName",
+             (SELECT count(*)::int FROM purchase_return_line l WHERE l.return_id = r.id) AS "lineCount"
+      FROM purchase_return r JOIN supplier s ON s.id = r.supplier_id JOIN branch b ON b.id = r.branch_id
+      LEFT JOIN goods_received g ON g.id = r.grn_id JOIN person pe ON pe.id = r.returned_by
+      WHERE true
+        ${limitTo === null ? sql`` : sql`AND r.branch_id IN (${sql.join(limitTo)})`}
+        ${q.branchId === undefined ? sql`` : sql`AND r.branch_id = ${q.branchId}`}
+        ${q.supplierId === undefined ? sql`` : sql`AND r.supplier_id = ${q.supplierId}`}
+        ${q.q === undefined ? sql`` : sql`AND (r.prn_no ILIKE ${'%' + q.q + '%'} OR r.credit_note_no ILIKE ${'%' + q.q + '%'})`}
+      ORDER BY r.returned_at DESC LIMIT ${q.limit} OFFSET ${q.offset}`.execute(app.db);
+    return { items: rows.rows.map((r) => ({ ...r, totalCost: round2(r['totalCost']), lineCount: n(r['lineCount']) })) };
+  });
+
+  app.get('/purchase-returns/:id', { onRequest: [app.requirePermission('supplier.read')] }, async (request) => {
+    const { id } = parseParams(idParams, request.params);
+    const head = await sql<Record<string, unknown>>`
+      SELECT r.id, r.prn_no AS "prnNo", r.returned_at AS "returnedAt", r.total_cost AS "totalCost", r.reason, r.credit_note_no AS "creditNoteNo",
+             s.id AS "supplierId", s.name AS "supplierName", s.code AS "supplierCode", b.id AS "branchId", b.name AS "branchName",
+             r.grn_id AS "grnId", g.grn_no AS "grnNo", pe.full_name AS "returnedByName"
+      FROM purchase_return r JOIN supplier s ON s.id = r.supplier_id JOIN branch b ON b.id = r.branch_id
+      LEFT JOIN goods_received g ON g.id = r.grn_id JOIN person pe ON pe.id = r.returned_by
+      WHERE r.id = ${id}::uuid`.execute(app.db);
+    const h = head.rows[0];
+    if (h === undefined) throw new PurchasingDocumentNotFound('purchase return', id);
+    assertInScope(request, String(h['branchId']));
+    const lines = await sql<Record<string, unknown>>`
+      SELECT l.line_no AS "lineNo", l.product_id AS "productId", p.sku, p.name, pk.label AS "packLabel",
+             l.qty_packs AS "qtyPacks", l.qty_base AS "qtyBase", l.unit_cost AS "unitCost", l.line_total AS "lineTotal"
+      FROM purchase_return_line l JOIN product p ON p.id = l.product_id JOIN product_pack pk ON pk.id = l.pack_id
+      WHERE l.return_id = ${id}::uuid ORDER BY l.line_no`.execute(app.db);
+    return {
+      ...h,
+      totalCost: round2(h['totalCost']),
+      lines: lines.rows.map((l) => ({ ...l, qtyPacks: n(l['qtyPacks']), qtyBase: n(l['qtyBase']), unitCost: n(l['unitCost']), lineTotal: round2(l['lineTotal']) })),
+    };
+  });
+
   app.get('/supplier-payments/:id', { onRequest: [app.requirePermission('supplier.read')] }, async (request) => {
     requireGroupWide(request);
     const { id } = parseParams(idParams, request.params);
     const p = await sql<Record<string, unknown>>`
       SELECT p.id, p.payment_no AS "paymentNo", p.amount, p.paid_at AS "paidAt", p.reference, t.name AS method, p.note,
              s.id AS "supplierId", s.name AS "supplierName", p.po_id AS "poId", po.po_no AS "poNo", p.grn_id AS "grnId", g.grn_no AS "grnNo",
-             pe.full_name AS "recordedByName", p.recorded_at AS "recordedAt", p.voided_at AS "voidedAt", p.void_reason AS "voidReason", vp.full_name AS "voidedByName"
+             pe.full_name AS "recordedByName", p.recorded_at AS "recordedAt", p.voided_at AS "voidedAt", p.void_reason AS "voidReason", vp.full_name AS "voidedByName",
+             cp.name AS "cashPointName", cb.name AS "cashPointBranch"
       FROM supplier_payment p JOIN supplier s ON s.id = p.supplier_id JOIN payment_type t ON t.id = p.payment_type_id JOIN person pe ON pe.id = p.recorded_by
+      LEFT JOIN cash_point cp ON cp.id = p.cash_point_id LEFT JOIN branch cb ON cb.id = cp.branch_id
       LEFT JOIN purchase_order po ON po.id = p.po_id LEFT JOIN goods_received g ON g.id = p.grn_id LEFT JOIN person vp ON vp.id = p.voided_by
       WHERE p.id = ${id}::uuid`.execute(app.db);
     const row = p.rows[0];

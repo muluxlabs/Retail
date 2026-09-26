@@ -258,7 +258,7 @@ export interface SupplierInput {
 
 export interface StatementLine {
   at: string;
-  kind: 'received' | 'payment' | 'void';
+  kind: 'received' | 'payment' | 'void' | 'return';
   ref: string;
   description: string;
   id: string;
@@ -281,6 +281,7 @@ export interface AgeingItem {
 export interface SupplierAccount {
   balance: number;
   receivedCost: number;
+  returnedCost: number;
   paid: number;
   ageing: {
     buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
@@ -436,7 +437,52 @@ export interface GrnDetail {
     lineTotal: number;
     orderedUnitCost: number | null;
     orderedPacks: number | null;
+    id: string;
+    packId: string;
+    /** Base units already sent back to the supplier against this line. */
+    returnedBase: number;
   }[];
+}
+
+export interface SupplierCashPoint {
+  id: string;
+  name: string;
+  kind: 'till' | 'safe' | 'petty' | 'bank';
+  branchId: string;
+  branchName: string;
+  amount: number;
+}
+
+export interface ReturnInput {
+  id: string;
+  supplierId: string;
+  branchId: string;
+  grnId?: string | null;
+  reason: string;
+  creditNoteNo?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost?: number | null; grnLineId?: string | null }[];
+}
+
+export interface ReturnSummary {
+  id: string;
+  prnNo: string;
+  returnedAt: string;
+  totalCost: number;
+  reason: string;
+  creditNoteNo: string | null;
+  supplierId: string;
+  supplierName: string;
+  branchId: string;
+  branchName: string;
+  grnNo: string | null;
+  returnedByName: string;
+  lineCount: number;
+}
+
+export interface ReturnDetail extends Omit<ReturnSummary, 'lineCount'> {
+  supplierCode: string;
+  grnId: string | null;
+  lines: { lineNo: number; productId: string; sku: string; name: string; packLabel: string; qtyPacks: number; qtyBase: number; unitCost: number; lineTotal: number }[];
 }
 
 export interface PaymentRow {
@@ -464,6 +510,8 @@ export interface PaymentDetail extends Omit<PaymentRow, 'methodId' | 'timing' | 
   grnId: string | null;
   recordedAt: string;
   voidedByName: string | null;
+  cashPointName: string | null;
+  cashPointBranch: string | null;
   proofs: { id: string; fileName: string; contentType: string; sizeBytes: number; sha256: string; uploadedAt: string; uploadedByName: string }[];
 }
 
@@ -477,6 +525,7 @@ export interface PaymentInput {
   poId?: string | null;
   grnId?: string | null;
   note?: string | null;
+  cashPointId?: string | null;
 }
 
 export interface Payables {
@@ -1263,6 +1312,19 @@ export const api = {
     }
     return (await response.json()) as { id: string; contentType: string; sizeBytes: number };
   },
+
+  supplierCashPoints: () => request<{ items: SupplierCashPoint[] }>('/api/supplier-payments/cash-points'),
+
+  returnGoods: (body: ReturnInput) =>
+    request<{ id: string; prnNo: string; totalCost: number; replayed: boolean }>('/api/purchase-returns', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  purchaseReturns: (params: { supplierId?: string; branchId?: string; q?: string; limit?: number } = {}) =>
+    request<{ items: ReturnSummary[] }>(`/api/purchase-returns${qs({ ...params })}`),
+
+  purchaseReturn: (id: string) => request<ReturnDetail>(`/api/purchase-returns/${id}`),
 
   proofUrl: (proofId: string) => `${API_BASE}/api/supplier-payments/proofs/${proofId}`,
 

@@ -26,7 +26,9 @@ import {
   costPerBaseUnit,
   dueDate,
   fromCents,
+  InsufficientCash,
   InvalidPurchase,
+  NegativeStockBlocked,
   paymentTiming,
   PaymentAlreadyVoided,
   ProofRejected,
@@ -41,7 +43,8 @@ import type { Database } from '@retail-ops/db';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 
-import { postMovementInTx } from './stock.js';
+import { onHand as cashOnHand, post as postCash } from './cash.js';
+import { postMovementInTx, wac } from './stock.js';
 
 type Db = Kysely<Database>;
 type Tx = Transaction<Database>;
@@ -412,6 +415,177 @@ async function runReceive(tx: Tx, input: GrnInput): Promise<{ id: string; grnNo:
   return { id: input.id, grnNo, totalCost: fromCents(totalCents) };
 }
 
+// -- returns to the supplier -----------------------------------------------------------------------------------------
+
+export interface ReturnLineInput {
+  productId: string;
+  packId: string;
+  qtyPacks: number;
+  /** Per pack. Left out: the cost it came in at (its delivery line, else the branch's average cost). */
+  unitCost?: number | null | undefined;
+  grnLineId?: string | null | undefined;
+}
+
+export interface ReturnInput {
+  id: string;
+  supplierId: string;
+  branchId: string;
+  grnId?: string | null | undefined;
+  returnedBy: string;
+  reason: string;
+  creditNoteNo?: string | null | undefined;
+  lines: ReturnLineInput[];
+}
+
+/**
+ * Send goods back to a supplier. The stock leaves at what it cost (reason
+ * 'grn_reversal'), and what is owed to the supplier goes down by the same. A
+ * line against a delivery cannot send back more than that delivery brought in,
+ * less what has already gone back; no line can send back more than is on hand.
+ */
+export async function returnGoods(db: Db, input: ReturnInput): Promise<{ id: string; prnNo: string; totalCost: number; replayed: boolean }> {
+  const existing = await db.selectFrom('purchase_return').select(['id', 'prn_no', 'total_cost']).where('id', '=', input.id).executeTakeFirst();
+  if (existing !== undefined) return { id: existing.id, prnNo: existing.prn_no, totalCost: Number(existing.total_cost), replayed: true };
+  try {
+    const r = await db.transaction().execute((tx) => runReturn(tx, input));
+    return { ...r, replayed: false };
+  } catch (error) {
+    const e = error as { code?: string; constraint?: string } | null;
+    if (e?.code === '23505' && e.constraint === 'purchase_return_pkey') {
+      const won = await db.selectFrom('purchase_return').select(['id', 'prn_no', 'total_cost']).where('id', '=', input.id).executeTakeFirstOrThrow();
+      return { id: won.id, prnNo: won.prn_no, totalCost: Number(won.total_cost), replayed: true };
+    }
+    throw error;
+  }
+}
+
+async function runReturn(tx: Tx, input: ReturnInput): Promise<{ id: string; prnNo: string; totalCost: number }> {
+  if (input.reason.trim().length < 3) throw new InvalidPurchase('Say why the goods are going back.');
+  const supplier = await tx.selectFrom('supplier').select(['id', 'name']).where('id', '=', input.supplierId).executeTakeFirst();
+  if (supplier === undefined) throw new PurchasingDocumentNotFound('supplier', input.supplierId);
+  const branch = await tx.selectFrom('branch').select(['id', 'code', 'is_active']).where('id', '=', input.branchId).executeTakeFirst();
+  if (branch === undefined || !branch.is_active) throw new InvalidPurchase('That branch is not available.');
+
+  const packs = await loadPacks(tx, [...new Set(input.lines.map((l) => l.packId))]);
+  checkLines(input.lines, packs);
+
+  // The delivery the goods came in on, and what each of its lines can still send back.
+  const grnLines = new Map<string, { productId: string; qtyBase: number; costPerBase: number; returnedBase: number; grnNo: string }>();
+  if (input.grnId !== undefined && input.grnId !== null) {
+    const g = await tx.selectFrom('goods_received').select(['id', 'grn_no', 'supplier_id', 'branch_id']).where('id', '=', input.grnId).executeTakeFirst();
+    if (g === undefined) throw new PurchasingDocumentNotFound('goods received note', input.grnId);
+    if (g.supplier_id !== input.supplierId) throw new InvalidPurchase(`${g.grn_no} came from a different supplier.`);
+    if (g.branch_id !== input.branchId) throw new InvalidPurchase(`${g.grn_no} was received at a different branch.`);
+    const rows = await sql<{ id: string; productId: string; qtyBase: number; qtyPacks: number; unitCost: number; returnedBase: number }>`
+      SELECT l.id, l.product_id AS "productId", l.qty_base AS "qtyBase", l.qty_packs AS "qtyPacks", l.unit_cost AS "unitCost",
+             coalesce((SELECT sum(r.qty_base) FROM purchase_return_line r WHERE r.grn_line_id = l.id), 0) AS "returnedBase"
+      FROM goods_received_line l WHERE l.grn_id = ${input.grnId}::uuid FOR UPDATE`.execute(tx);
+    for (const r of rows.rows) {
+      grnLines.set(r.id, {
+        productId: r.productId,
+        qtyBase: Number(r.qtyBase),
+        // What one base unit cost on that delivery.
+        costPerBase: (Number(r.unitCost) * Number(r.qtyPacks)) / Number(r.qtyBase),
+        returnedBase: Number(r.returnedBase),
+        grnNo: g.grn_no,
+      });
+    }
+  }
+
+  const wanted = new Map<string, number>();
+  const priced = [];
+  for (const [index, l] of input.lines.entries()) {
+    const pack = packs.get(l.packId)!;
+    const qtyBase = round4(l.qtyPacks * pack.qtyBase);
+    let unitCost = l.unitCost ?? null;
+    if (l.grnLineId !== undefined && l.grnLineId !== null) {
+      const gl = grnLines.get(l.grnLineId);
+      if (gl === undefined) throw new InvalidPurchase('A line points at a delivery line that is not on that delivery.');
+      if (gl.productId !== l.productId) throw new InvalidPurchase('A line does not match the product on the delivery line it points at.');
+      const total = (wanted.get(l.grnLineId) ?? 0) + qtyBase;
+      wanted.set(l.grnLineId, total);
+      if (total + gl.returnedBase > gl.qtyBase + 1e-9) {
+        throw new InvalidPurchase(
+          `${pack.name}: ${gl.grnNo} brought in ${gl.qtyBase}${gl.returnedBase > 0 ? `, ${gl.returnedBase} already went back,` : ''} so at most ${round4(gl.qtyBase - gl.returnedBase)} can be returned against it.`,
+        );
+      }
+      unitCost ??= Math.round(gl.costPerBase * pack.qtyBase * 10_000) / 10_000;
+    }
+    if (unitCost === null) {
+      const avg = await wac(tx, l.productId, input.branchId);
+      if (avg === null) throw new InvalidPurchase(`${pack.name} has no cost on record here. Enter the cost the supplier is crediting.`);
+      unitCost = Math.round(Number(avg) * pack.qtyBase * 10_000) / 10_000;
+    }
+    priced.push({ index, l, pack, qtyBase, unitCost, cents: costLineCents(l.qtyPacks, unitCost) });
+  }
+
+  const at = new Date();
+  const seqByIndex = new Map<number, number>();
+  for (const p of [...priced].sort((a, b) => a.pack.productId.localeCompare(b.pack.productId) || a.index - b.index)) {
+    try {
+      const posted = await postMovementInTx(tx, {
+        productId: p.pack.productId,
+        branchId: input.branchId,
+        qtyBase: -p.qtyBase,
+        reason: 'grn_reversal',
+        actorId: input.returnedBy,
+        unitCost: costPerBaseUnit(p.unitCost, p.pack.qtyBase),
+        docType: 'PRN',
+        docId: input.id,
+        occurredAt: at,
+      });
+      seqByIndex.set(p.index, posted.seq);
+    } catch (error) {
+      // Nothing can go back that is not on the shelf; say which item.
+      if (error instanceof NegativeStockBlocked) Object.assign(error.detail, { productId: p.pack.productId, productName: p.pack.name });
+      throw error;
+    }
+  }
+
+  const totalCents = priced.reduce((s, p) => s + p.cents, 0);
+  const prnNo = await branchNumber(tx, input.branchId, 'PRN', branch.code);
+  await tx
+    .insertInto('purchase_return')
+    .values({
+      id: input.id,
+      prn_no: prnNo,
+      supplier_id: input.supplierId,
+      branch_id: input.branchId,
+      grn_id: input.grnId ?? null,
+      returned_by: input.returnedBy,
+      returned_at: at,
+      reason: input.reason.trim(),
+      credit_note_no: input.creditNoteNo ?? null,
+      total_cost: fromCents(totalCents),
+    })
+    .execute();
+  await tx
+    .insertInto('purchase_return_line')
+    .values(
+      priced.map((p) => ({
+        return_id: input.id,
+        line_no: p.index + 1,
+        grn_line_id: p.l.grnLineId ?? null,
+        product_id: p.pack.productId,
+        pack_id: p.pack.packId,
+        qty_packs: p.l.qtyPacks,
+        qty_base: p.qtyBase,
+        unit_cost: p.unitCost,
+        line_total: fromCents(p.cents),
+        movement_seq: seqByIndex.get(p.index) ?? 0,
+      })),
+    )
+    .execute();
+  await audit(tx, 'PURCHASE_RETURN_POSTED', input.returnedBy, input.branchId, 'purchase_return', input.id, {
+    prnNo,
+    supplier: supplier.name,
+    lines: priced.length,
+    total: fromCents(totalCents),
+    reason: input.reason.trim(),
+  });
+  return { id: input.id, prnNo, totalCost: fromCents(totalCents) };
+}
+
 // -- paying suppliers ---------------------------------------------------------------------------------------------------
 
 export interface PaymentInput {
@@ -424,6 +598,8 @@ export interface PaymentInput {
   poId?: string | null | undefined;
   grnId?: string | null | undefined;
   note?: string | null | undefined;
+  /** For cash: the safe, petty cash or till it was paid out of. */
+  cashPointId?: string | null | undefined;
   recordedBy: string;
 }
 
@@ -468,6 +644,26 @@ export async function recordPayment(db: Db, input: PaymentInput): Promise<{ id: 
         if (po.supplier_id !== input.supplierId) throw new InvalidPurchase(`${po.po_no} was placed with a different supplier.`);
       }
 
+      // Cash leaves a cash point: say which, so its expected cash is right at the
+      // next count. Required whenever the business keeps any cash points at all.
+      let cashPoint: { id: string; name: string } | null = null;
+      if (method.is_cash) {
+        if (input.cashPointId === undefined || input.cashPointId === null) {
+          const any = await tx.selectFrom('cash_point').select('id').where('is_active', '=', true).executeTakeFirst();
+          if (any !== undefined) throw new InvalidPurchase('Choose the cash point the cash was paid out of (the safe, petty cash or a till).');
+        } else {
+          const cp = await sql<{ id: string; name: string; isActive: boolean }>`
+            SELECT id, name, is_active AS "isActive" FROM cash_point WHERE id = ${input.cashPointId}::uuid FOR UPDATE`.execute(tx);
+          const row = cp.rows[0];
+          if (row === undefined || !row.isActive) throw new InvalidPurchase('That cash point is not available.');
+          const available = await cashOnHand(tx, row.id);
+          if (toCents(available) < cents) throw new InsufficientCash(Number(available), fromCents(cents));
+          cashPoint = { id: row.id, name: row.name };
+        }
+      } else if (input.cashPointId !== undefined && input.cashPointId !== null) {
+        throw new InvalidPurchase(`A ${method.name.toLowerCase()} payment does not come out of a cash point.`);
+      }
+
       const paymentNo = await groupNumber(tx, 'PAY');
       await tx
         .insertInto('supplier_payment')
@@ -486,14 +682,27 @@ export async function recordPayment(db: Db, input: PaymentInput): Promise<{ id: 
           voided_at: null,
           voided_by: null,
           void_reason: null,
+          cash_point_id: cashPoint?.id ?? null,
         })
         .execute();
+      if (cashPoint !== null) {
+        await postCash(tx, {
+          cashPointId: cashPoint.id,
+          amount: -fromCents(cents),
+          reason: 'supplier_payment',
+          actorId: input.recordedBy,
+          docType: 'SUPPLIER_PAY',
+          docId: input.id,
+          occurredAt: paidAt,
+        });
+      }
       await audit(tx, 'SUPPLIER_PAID', input.recordedBy, null, 'supplier_payment', input.id, {
         paymentNo,
         supplier: supplier.name,
         amount: fromCents(cents),
         method: method.name,
         reference: input.reference ?? null,
+        cashPoint: cashPoint?.name ?? null,
       });
       return { id: input.id, paymentNo };
     });
@@ -514,6 +723,17 @@ export async function voidPayment(db: Db, id: string, by: string, reason: string
     if (p === undefined) throw new PurchasingDocumentNotFound('payment', id);
     if (p.voided_at !== null) throw new PaymentAlreadyVoided(p.payment_no);
     await sql`UPDATE supplier_payment SET voided_at = now(), voided_by = ${by}::uuid, void_reason = ${reason} WHERE id = ${id}::uuid`.execute(tx);
+    // Cash that was paid out of a cash point goes back into it.
+    if (p.cash_point_id !== null) {
+      await postCash(tx, {
+        cashPointId: p.cash_point_id,
+        amount: Number(p.amount),
+        reason: 'supplier_payment_void',
+        actorId: by,
+        docType: 'SUPPLIER_PAY',
+        docId: id,
+      });
+    }
     await audit(tx, 'SUPPLIER_PAYMENT_VOIDED', by, null, 'supplier_payment', id, { paymentNo: p.payment_no, amount: Number(p.amount), reason });
   });
 }
@@ -569,6 +789,8 @@ export async function addProof(db: Db, paymentId: string, by: string, fileName: 
 export interface SupplierAccount {
   balance: number;
   receivedCost: number;
+  /** Goods sent back to the supplier, at cost: what the supplier owes us credit for. */
+  returnedCost: number;
   paid: number;
   ageing: {
     buckets: Record<string, number>;
@@ -578,7 +800,7 @@ export interface SupplierAccount {
   };
   statement: {
     at: string;
-    kind: 'received' | 'payment' | 'void';
+    kind: 'received' | 'payment' | 'void' | 'return';
     ref: string;
     description: string;
     id: string;
@@ -612,6 +834,12 @@ export async function supplierAccount(db: Db, supplierId: string, asOf: Date = n
            p.po_id AS "poId", p.grn_id AS "grnId", p.voided_at AS "voidedAt", p.void_reason AS "voidReason"
     FROM supplier_payment p JOIN payment_type t ON t.id = p.payment_type_id
     WHERE p.supplier_id = ${supplierId}::uuid ORDER BY p.paid_at`.execute(db);
+
+  const rets = await sql<{ id: string; prnNo: string; returnedAt: Date; total: number; reason: string; creditNoteNo: string | null; grnNo: string | null }>`
+    SELECT r.id, r.prn_no AS "prnNo", r.returned_at AS "returnedAt", r.total_cost AS total, r.reason,
+           r.credit_note_no AS "creditNoteNo", g.grn_no AS "grnNo"
+    FROM purchase_return r LEFT JOIN goods_received g ON g.id = r.grn_id
+    WHERE r.supplier_id = ${supplierId}::uuid ORDER BY r.returned_at`.execute(db);
 
   // First delivery day per order and the day of each delivery, to say prepaid / on delivery / after.
   const deliveryDayByGrn = new Map(grns.rows.map((g) => [g.id, dayIn(tz, g.receivedAt)]));
@@ -648,6 +876,15 @@ export async function supplierAccount(db: Db, supplierId: string, asOf: Date = n
         timing: paymentTiming(day, linked, deliveryDay),
       };
     }),
+    ...rets.rows.map((r) => ({
+      at: iso(r.returnedAt),
+      kind: 'return' as const,
+      id: r.id,
+      ref: r.prnNo,
+      description: `Goods returned${r.grnNo === null ? '' : ` from ${r.grnNo}`} · ${r.reason}${r.creditNoteNo === null ? '' : ` · credit note ${r.creditNoteNo}`}`,
+      debitCents: 0,
+      creditCents: toCents(Number(r.total)),
+    })),
     // A void puts the money back on the account at the moment it was voided.
     ...pays.rows
       .filter((p) => p.voidedAt !== null)
@@ -675,6 +912,7 @@ export async function supplierAccount(db: Db, supplierId: string, asOf: Date = n
 
   const receivedCents = entries.reduce((s, e) => s + (e.kind === 'received' ? e.debitCents : 0), 0);
   const paidCents = entries.reduce((s, e) => s + (e.kind === 'payment' ? e.creditCents : e.kind === 'void' ? -e.debitCents : 0), 0);
+  const returnedCents = entries.reduce((s, e) => s + (e.kind === 'return' ? e.creditCents : 0), 0);
 
   const today = dayIn(tz, asOf);
   const ageing = ageDeliveries(
@@ -684,14 +922,16 @@ export async function supplierAccount(db: Db, supplierId: string, asOf: Date = n
       const days = g.poTerms !== null ? g.poCreditDays : supplier.credit_days;
       return { id: g.id, day, cents: toCents(Number(g.total)), dueDay: dueDate(day, terms, days) };
     }),
-    paidCents,
+    // Credit notes for returned goods settle the oldest deliveries just as payments do.
+    paidCents + returnedCents,
     today,
   );
   const grnNo = new Map(grns.rows.map((g) => [g.id, g.grnNo]));
 
   return {
-    balance: fromCents(receivedCents - paidCents),
+    balance: fromCents(receivedCents - returnedCents - paidCents),
     receivedCost: fromCents(receivedCents),
+    returnedCost: fromCents(returnedCents),
     paid: fromCents(paidCents),
     ageing: {
       buckets: Object.fromEntries(Object.entries(ageing.buckets).map(([k, v]) => [k, fromCents(v)])),
