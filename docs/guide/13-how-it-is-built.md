@@ -80,4 +80,3 @@ The full regression (20+ API suites, 15 browser suites) runs on a freshly built 
 - No fiscal-device (ZIMRA) integration yet — it needs the business's own tax credentials and device.
 - Receipts print through the browser; there is no direct ESC/POS or cash-drawer driver.
 - API access uses staff sessions; dedicated API keys and webhooks are not built yet.
-- The audit log is recorded but has no screen to browse it yet.

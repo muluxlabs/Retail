@@ -24,7 +24,7 @@
 - **Every unpriced item at once:** show only items with *no price yet*, tick them all, and apply *cost plus a markup* (rounded up). Items with no known cost are left for you to price by hand.
 - **From a supplier's price list:** see [Buying › Supplier price lists](07-buying.md#supplier-price-lists).
 
-Every price change is recorded in the audit log with the old and new price and who made it. An item with no price cannot be sold.
+Every price change is recorded in the [audit log](09-reports-and-controls.md#the-audit-log) with the old and new price and who made it. An item with no price cannot be sold.
 
 ## Stock on hand
 

@@ -13,28 +13,32 @@ Open the system in any modern browser (Chrome, Edge, Firefox, Safari) on a till,
 
 ## Finding your way
 
-The menu along the top shows **only the screens your job needs**. A cashier sees *Sell* and *Cash*; a branch manager sees most things for their branch; an administrator sees everything. If you expect a screen and do not see it, your access does not include it — see [Roles and access](03-roles-and-access.md).
+The system shows **only the screens your job needs**. A cashier sees *Sell* and *Cash*; a branch manager sees most things for their branch; an administrator sees everything. If you expect a screen and do not see it, your access does not include it — see [Roles and access](03-roles-and-access.md).
 
-| Menu | What is inside |
+**The top bar** holds the main areas you work in — for example *Overview · Sell · Cash · Buying · Stock · Reports*. Screens that belong together have a row of tabs underneath (**Buying** has *Suppliers, Orders, Goods received, Returns, Price lists, Payments, Owed to suppliers*).
+
+**All screens — the nine dots** (⋮⋮⋮ at the top right, or **Ctrl + K** from anywhere) opens a panel with every screen you may use, grouped by area, each with a line saying what it is for.
+
+![All screens, with search](images/launcher.jpg)
+
+**Search.** Start typing in that panel — *price list*, *Z report*, *debtors*, *shift*, *who changed* — and the matching screens appear. **↑ ↓** to choose, **Enter** to open.
+
+**Across the top or down the side.** At the bottom of the panel, choose **Menu: Across the top** or **Down the side**. *Down the side* keeps every screen, grouped by area, in a bar on the left — handy on a large screen or if you move around a lot. The choice is remembered on that computer.
+
+![The menu down the side](images/side-menu.jpg)
+
+| Area | Screens |
 |---|---|
-| **Overview** | The group or branch at a glance: today's sales, profit, stock value, exceptions. |
-| **Sell** | The till. |
-| **Buying** | Suppliers · Orders · Goods received · Returns · Price lists · Payments · Owed to suppliers |
-| **Stock entry** | Stock take · Opening stock |
+| **Home** | Overview |
+| **Selling and cash** | Sell · Shifts · Cash custody · End of day |
 | **Customers** | Customers · Owed by customers |
-| **Transfers** | Stock moving between branches. |
-| **Cash** | Cash custody · Shifts · End of day |
-| **Exceptions** | The queue of things to review. |
-| **Stock on hand** | What is where, and what it is worth. |
-| **Reports** | Sales and profit · Item analysis · Stock movement |
-| **Item master** | Items, packs, barcodes. |
-| **Prices** | Selling prices, in bulk. |
-| **Stock ledger** | Every movement of every item, in accounting form. |
-| **Staff · Branches · Settings** | Administration. |
+| **Stock** | Stock on hand · Stock ledger · Stock take · Opening stock · Transfers |
+| **Items and prices** | Item master · Prices |
+| **Buying** | Suppliers · Purchase orders · Goods received · Returns to suppliers · Supplier price lists · Supplier payments · Owed to suppliers |
+| **Reports and controls** | Sales and profit · Sales receipts · Item analysis · Stock movement · Exceptions · Audit log |
+| **Administration** | Staff and access · Branches · Settings · User guide |
 
-Screens that belong together have a second row of tabs underneath (for example **Buying** has *Suppliers, Orders, Goods received…*).
-
-**On a phone** the menu folds into the ☰ button at the top left, and tables scroll sideways inside their card so the page itself never does.
+**On a phone** the top bar folds away: the nine dots open the same panel, full screen, with search.
 
 ![The overview on a phone](images/phone-overview.jpg)
 

@@ -12,7 +12,7 @@ Access is built from **permissions** — single things a person may do, such as 
 | **Stock Controller** | Item master, Prices, Stock, Buying, Stock entry | Keep items and prices, order from suppliers, import supplier price lists, stock takes, opening stock; see cash positions | Count or move cash, pay suppliers |
 | **Branch Manager** | Nearly everything, for their branch | Run the branch: sell, override prices, receive, count, order, close the day, manage customers and credit | Pay suppliers; manage staff; change settings |
 | **Finance** | Overview, Buying, Customers, Reports, Cash (read) | Pay suppliers, manage customers and credit, read sales and profit | Sell, move stock |
-| **Auditor** | Everything, read only | Read every screen; clear exceptions | Change anything else |
+| **Auditor** | Everything, read only | Read every screen, including the [audit log](09-reports-and-controls.md#the-audit-log); clear exceptions | Change anything else |
 | **Administrator** | Everything | Everything, including staff, access, branches and settings | Change their **own** access |
 
 **Branch scope.** A person can be tied to one branch or be group-wide. A branch-tied person sees and acts on their own branch only, and group-wide money (what the group owes suppliers, for instance) is hidden from them.
@@ -43,7 +43,7 @@ What happens next:
 
 - It applies on the person's **next click** — no need for them to sign out.
 - It applies to **that person only**; everyone else with the same role is unchanged.
-- It is written to the **audit log** with who changed it, when and why. Access *added* beyond a role also goes to the **exception queue** so a second person can check it is still needed.
+- It is written to the [audit log](09-reports-and-controls.md#the-audit-log) with who changed it, when and why. Access *added* beyond a role also goes to the **exception queue** so a second person can check it is still needed.
 - The staff list shows **+1 added** / **−1 removed** next to anyone with personal access, so it is never forgotten.
 
 **Safeguards.** Nobody can change their own access (another administrator must). Nobody can give access they do not hold themselves. The database itself refuses a self-given permission.
@@ -73,5 +73,5 @@ What happens next:
 | Stock | See stock · Stock take *(sensitive)* · Opening stock *(sensitive)* · Zero a branch *(sensitive)* · Transfers | Stock screens |
 | Buying | See suppliers and costs · Change suppliers · Order · Receive · Return · Pay suppliers *(sensitive)* | Buying |
 | Customers | See customers · Add customers and set credit *(sensitive)* · Adjust loyalty points *(sensitive)* | Customers |
-| Oversight | Overview · Sales, costs and profit · Exceptions (see / clear) · Audit log *(no screen yet)* | Overview, Reports, Exceptions |
+| Oversight | Overview · Sales, costs and profit · Exceptions (see / clear) · See the audit log | Overview, Reports, Exceptions › Exception queue, Exceptions › Audit log |
 | Administration | See staff · Manage staff and access *(sensitive)* · Branches *(sensitive)* · Settings *(sensitive)* | Staff, Branches, Settings |

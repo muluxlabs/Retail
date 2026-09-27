@@ -34,9 +34,24 @@
 
 ![Stock movement](images/report-stock-movement.jpg)
 
+## Exceptions and the audit log — what is the difference?
+
+The system has two controls that look alike but do different jobs.
+
+| | **Exception queue** | **Audit log** |
+|---|---|---|
+| **What it is** | A **to-do list** of unusual events that need a person's decision | The **complete history** of changes to how the business is set up, and of every sign-in |
+| **What goes in** | Only what is out of the ordinary: a till short, a price changed at the till, stock sold that was not there, a delivery short, access given beyond a role… | Everything that changes the set-up: prices, items, barcodes, suppliers, customers, credit limits, staff, roles and access, settings, branches — and every sign-in, failed password and sign-out |
+| **What you do with it** | **Review and clear** each one, with a note | **Look things up**: who changed this, when, and from what to what? |
+| **Does it end?** | Each exception is open until someone clears it | Nothing to clear; it only grows |
+| **Who sees it** | Supervisors, managers, finance, auditors | Auditors, finance, administrators (others can be given it per person) |
+| **Where** | **Exceptions › Exception queue** | **Exceptions › Audit log** |
+
+Some events appear in both: raising a customer's credit limit is a change on record (audit log) *and* a decision someone should check (exception). Neither can be edited or deleted.
+
 ## The exception queue
 
-**Exceptions** lists everything unusual that needs a person to look at it: what happened, where, who did it, when, and what it is worth. Each stays open until someone with the permission **clears** it (with a note), or acknowledges or escalates it. Nothing in the queue can be deleted.
+**Exceptions › Exception queue** lists everything unusual that needs a person to look at it: what happened, where, who did it, when, and what it is worth. Each stays open until someone with the permission **clears** it (with a note), or marks it **acknowledged** or **escalated**. Nothing in the queue can be deleted.
 
 ![The exception queue](images/exceptions.jpg)
 
@@ -57,11 +72,40 @@
 | **Loyalty points changed by hand** | Points were added or taken away. |
 | **Access given beyond a role** | Someone was given a permission their role does not include. |
 
-## The audit trail
+## The audit log
 
-Beyond the documents themselves (which cannot be edited), the system keeps an **audit log** of changes to configuration: prices, items, staff, roles and access, settings, credit limits, sign-ins. Each entry records who, when, the value before and after, and — where given — why.
+**Exceptions › Audit log** is the complete history of changes and sign-ins.
 
-> **Current limitation:** the audit log is recorded in full, but there is not yet a screen to browse it inside the system. Until there is, it is read from the database on request. The changes that matter most day to day — prices overridden, access added, credit limits raised, points adjusted — also appear in the exception queue.
+![The audit log](images/audit-log.jpg)
+
+Each entry shows:
+
+- **When** — the time it happened (and, if it was recorded later, when it was recorded);
+- **Who** — the person, and the branch they acted for;
+- **What** — in plain words (*Changed a selling price*, *Gave access beyond the role*, *Changed a setting*…), with the record it was about — the item, the person, the supplier, the document number — as a link to open it;
+- **Changes** — each value **before → after** (the old value struck through). For something new, what it was created with.
+
+Sensitive changes (access, password resets, settings, stock set to zero, payments voided, credit limits) are marked **review**.
+
+**Finding things.** Filter by **period**, **kind of change** (sign-in and passwords · staff and access · prices · items · stock · buying · customers · shifts and end of day · branches and settings · exceptions), **who**, or **search** for any name or value — a customer, a price, a reason. **Export CSV** takes the list to a spreadsheet.
+
+**Who can see it.** People holding *See the audit log* — auditors, finance and administrators by default. Anyone else can be given it on their **Access** page; someone tied to one branch then sees that branch's entries only.
+
+**What is recorded:**
+
+| Kind | Examples |
+|---|---|
+| Sign-in and passwords | Signed in, wrong password (with attempt count), account locked, signed out, password changed or reset |
+| Staff and access | Person added or changed, roles, access given / removed / put back to the role (with the reason) |
+| Prices | Every selling price change, old and new — at the Prices screen, or from a supplier price list |
+| Items | Items, packs and barcodes added or changed; items added at the till, approved or merged |
+| Stock | Opening stock brought in; a branch set to zero |
+| Buying | Suppliers added or changed; orders placed, cancelled or closed; deliveries; returns; payments, voids, proof attached |
+| Customers | Customers added (including at the till) or changed; credit limits; payments received and voided |
+| Shifts and end of day | Shifts opened and closed; days closed |
+| Settings and branches | Every setting (old and new value); branches added or changed |
+
+Sales, deliveries, counts and cash movements are not repeated in the audit log: each is already a numbered, unchangeable document in its own ledger, with who and when.
 
 ## What cannot happen
 

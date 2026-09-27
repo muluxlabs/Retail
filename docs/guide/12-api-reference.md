@@ -193,6 +193,8 @@ Paths are relative to `/api`. **Permission** is what the signed-in account needs
 | GET | `/reports/sales` | sale.read | Sales and profit |
 | GET | `/reports/items`, `/reports/items/:id/history` | sale.read | Item analysis |
 | GET · POST | `/exceptions`, `/exceptions/:id(/clear|/state)` | exception.read / exception.clear | The exception queue |
+| GET | `/audit?from=&to=&actions=&actorId=&branchId=&entityType=&entityId=&q=` | audit.read | The audit log: who, when, before → after (branch-scoped accounts: their branches only) |
+| GET | `/audit/facets` | audit.read | Kinds of change and people found, for filters |
 
 ### Administration
 

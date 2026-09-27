@@ -15,7 +15,7 @@ It was built to replace an older point-of-sale package whose numbers could not b
 | **Buying** | Suppliers, purchase orders, goods received, returns, payments, what is owed, supplier price lists. | Buying |
 | **Customers** | Customers on credit with limits, payments received, aged debtors; loyalty points. | Customers |
 | **Reports** | Sales, cost and profit; item analysis; stock movement; the group overview. | Overview, Reports |
-| **Controls** | The exception queue, the audit trail, roles and per-person access. | Exceptions, Staff |
+| **Controls** | The exception queue (unusual events to review), the [audit log](09-reports-and-controls.md#the-audit-log) (every change, before and after), roles and per-person access. | Exceptions, Audit log, Staff |
 
 ## Who uses it
 

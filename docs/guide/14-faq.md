@@ -69,8 +69,11 @@ Yes — with **Keep each item's margin**, a lower cost suggests a lower price. Y
 
 ## Everything else
 
-**Where is the audit log?**
-It is recorded in full, but there is no screen for it yet; it is read from the database on request.
+**Who changed this price (or this setting, or this person's access)?**
+**Exceptions › Audit log**: filter by *kind of change*, or search for the item or value. Each entry shows who, when, and the value before and after. See [the audit log](09-reports-and-controls.md#the-audit-log).
+
+**What is the difference between an exception and an audit entry?**
+An exception is something unusual waiting for someone's decision; the audit log is the complete history of changes. See [Exceptions and the audit log](09-reports-and-controls.md#exceptions-and-the-audit-log--what-is-the-difference).
 
 **Who do we call?**
 Your system administrator first; they can reset passwords and access. For anything else, your support contact.
