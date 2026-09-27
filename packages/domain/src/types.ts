@@ -38,7 +38,8 @@ export type ExceptionKind =
   | 'opening_stock'
   | 'credit_limit_change'
   | 'shift_variance'
-  | 'loyalty_adjustment';
+  | 'loyalty_adjustment'
+  | 'access_granted';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 

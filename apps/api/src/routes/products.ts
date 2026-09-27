@@ -156,8 +156,12 @@ class NotPermittedPrice extends Error {
 }
 
 export async function registerProductRoutes(app: FastifyInstance): Promise<void> {
-  /** List the item master, newest first, with pack and barcode counts. */
-  app.get('/products', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
+  /**
+   * List the item master, with packs, barcodes and selling prices (never costs).
+   * The till searches it too, so selling is enough to read it this way; the
+   * item master screen and a product's detail still need product.read.
+   */
+  app.get('/products', { onRequest: [app.requireAnyPermission('product.read', 'movement.post')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
 
     let query = app.db

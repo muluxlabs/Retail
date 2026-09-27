@@ -30,6 +30,7 @@ const KINDS = [
   'credit_limit_change',
   'shift_variance',
   'loyalty_adjustment',
+  'access_granted',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

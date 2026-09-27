@@ -9,21 +9,12 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
+import { ROLE_LABEL } from '../lib/access.js';
 import { api, ApiError, type Branch, type UserRow } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, timeAgo, useAsync } from '../lib/ui.js';
-
-const ROLE_LABEL: Record<string, string> = {
-  cashier: 'Cashier',
-  supervisor: 'Shift Supervisor',
-  receiver: 'Goods Receiver',
-  stock_controller: 'Stock Controller',
-  branch_manager: 'Branch Manager',
-  auditor: 'Auditor',
-  finance: 'Finance',
-  administrator: 'Administrator',
-};
 
 export function Users() {
   const { can, user: me } = useAuth();
@@ -168,6 +159,12 @@ function Row({ user, isMe, onChange }: { user: UserRow; isMe: boolean; onChange:
               </Badge>
             ))
           )}
+          {user.overrides.some((o) => o.effect === 'grant') && (
+            <Badge tone="info">+{user.overrides.filter((o) => o.effect === 'grant').length} added</Badge>
+          )}
+          {user.overrides.some((o) => o.effect === 'revoke') && (
+            <Badge tone="bad">−{user.overrides.filter((o) => o.effect === 'revoke').length} removed</Badge>
+          )}
         </div>
       </td>
       <td className="px-3 py-2">
@@ -188,6 +185,13 @@ function Row({ user, isMe, onChange }: { user: UserRow; isMe: boolean; onChange:
       </td>
       <td className="px-4 py-2 text-right">
         <div className="flex items-center justify-end gap-1.5">
+          <Link
+            to={`/users/${user.id}/access`}
+            aria-label={`Access for ${user.fullName}`}
+            className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset"
+          >
+            Access
+          </Link>
           {can('user.manage') && user.canSignIn && (
             <Button onClick={() => void resetPassword()} disabled={busy}>
               Reset password

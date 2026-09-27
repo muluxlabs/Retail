@@ -45,7 +45,8 @@ export type ExceptionKind =
   | 'opening_stock'
   | 'credit_limit_change'
   | 'shift_variance'
-  | 'loyalty_adjustment';
+  | 'loyalty_adjustment'
+  | 'access_granted';
 
 export type ProductReviewState = 'approved' | 'pending';
 
@@ -88,6 +89,16 @@ export interface PersonTable {
 export interface RoleTable {
   id: string;
   name: string;
+}
+
+/** One person's access beyond (grant) or short of (revoke) what their roles give. */
+export interface PersonPermissionTable {
+  person_id: string;
+  permission_id: string;
+  effect: 'grant' | 'revoke';
+  note: string | null;
+  set_by: string;
+  set_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
 export interface PersonRoleTable {
@@ -778,6 +789,7 @@ export interface Database {
   person: PersonTable;
   role: RoleTable;
   person_role: PersonRoleTable;
+  person_permission: PersonPermissionTable;
   product_category: ProductCategoryTable;
   product: ProductTable;
   product_pack: ProductPackTable;

@@ -250,6 +250,17 @@ async function loadGrants(
     if (row.permissionId !== null) permissions.add(row.permissionId);
     if (row.branchId !== null) branchIds.add(row.branchId);
   }
+  // What an administrator added for this person, or took away. Branch scope
+  // still comes from the roles: an added permission works within it.
+  const overrides = await db
+    .selectFrom('person_permission')
+    .select(['permission_id as permissionId', 'effect'])
+    .where('person_id', '=', personId)
+    .execute();
+  for (const o of overrides) {
+    if (o.effect === 'grant') permissions.add(o.permissionId);
+    else permissions.delete(o.permissionId);
+  }
   return { permissions, roles: [...roles], branchIds: [...branchIds] };
 }
 

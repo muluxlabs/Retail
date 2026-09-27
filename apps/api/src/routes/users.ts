@@ -32,6 +32,13 @@ const createUserBody = z.object({
 
 const idParams = z.object({ id: z.uuid() });
 
+const accessParams = z.object({ id: z.uuid(), permission: z.string().trim().min(1).max(64) });
+const accessBody = z.object({
+  /** grant: add beyond the role; revoke: take away what the role gives; role: back to what the role gives. */
+  effect: z.enum(['grant', 'revoke', 'role']),
+  note: z.string().trim().max(300).nullable().optional(),
+});
+
 const updateUserBody = z.object({
   isActive: z.boolean().optional(),
   roleIds: z.array(z.string().trim().min(1).max(64)).optional(),
@@ -75,8 +82,17 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       byPerson.set(g.personId, list);
     }
 
+    const overrides = await app.db
+      .selectFrom('person_permission')
+      .select(['person_id as personId', 'permission_id as permissionId', 'effect'])
+      .execute();
+    const overridesOf = new Map<string, { permissionId: string; effect: 'grant' | 'revoke' }[]>();
+    for (const o of overrides) overridesOf.set(o.personId, [...(overridesOf.get(o.personId) ?? []), { permissionId: o.permissionId, effect: o.effect }]);
+
     return people.map((p) => ({
       ...p,
+      /** Access set for this person beyond or short of their roles. */
+      overrides: overridesOf.get(p.id) ?? [],
       /** No credential row means the person exists but cannot sign in. */
       canSignIn: p.loginEmail !== null,
       roles: (byPerson.get(p.id) ?? []).map((g) => ({
@@ -294,6 +310,137 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       return { temporaryPassword: password, mustChangePassword: true };
     },
   );
+
+  /** One person's access: every permission, whether their roles give it, and anything set for them. */
+  app.get('/users/:id/access', { onRequest: [app.requirePermission('user.read')] }, async (request, reply) => {
+    const { id } = parseParams(idParams, request.params);
+    const person = await app.db.selectFrom('person').select(['id', 'full_name as fullName']).where('id', '=', id).executeTakeFirst();
+    if (person === undefined) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No user ${id}` } });
+    const [all, fromRoles, roles, overrides] = await Promise.all([
+      app.db.selectFrom('permission').select(['id', 'description']).orderBy('id').execute(),
+      app.db
+        .selectFrom('person_role')
+        .innerJoin('role_permission', 'role_permission.role_id', 'person_role.role_id')
+        .select(['role_permission.permission_id as permissionId', 'person_role.role_id as roleId'])
+        .where('person_role.person_id', '=', id)
+        .execute(),
+      app.db
+        .selectFrom('person_role')
+        .leftJoin('branch', 'branch.id', 'person_role.branch_id')
+        .select(['person_role.role_id as roleId', 'branch.name as branchName'])
+        .where('person_role.person_id', '=', id)
+        .execute(),
+      app.db
+        .selectFrom('person_permission')
+        .innerJoin('person', 'person.id', 'person_permission.set_by')
+        .select(['person_permission.permission_id as permissionId', 'person_permission.effect', 'person_permission.note', 'person_permission.set_at as setAt', 'person.full_name as setByName'])
+        .where('person_permission.person_id', '=', id)
+        .execute(),
+    ]);
+    const viaRoles = new Map<string, string[]>();
+    for (const r of fromRoles) viaRoles.set(r.permissionId, [...(viaRoles.get(r.permissionId) ?? []), r.roleId]);
+    const override = new Map(overrides.map((o) => [o.permissionId, o]));
+    return {
+      person,
+      roles,
+      permissions: all.map((p) => {
+        const o = override.get(p.id);
+        const fromRole = viaRoles.has(p.id);
+        return {
+          id: p.id,
+          description: p.description,
+          fromRoles: viaRoles.get(p.id) ?? [],
+          override: o === undefined ? null : { effect: o.effect, note: o.note, setAt: o.setAt, setByName: o.setByName },
+          effective: o === undefined ? fromRole : o.effect === 'grant',
+        };
+      }),
+    };
+  });
+
+  /**
+   * Add a permission for one person, take one away, or put it back to what their role gives.
+   * Nobody changes their own access, and nobody gives access they do not hold.
+   */
+  app.put('/users/:id/access/:permission', { onRequest: [app.requirePermission('user.manage')] }, async (request, reply) => {
+    const { id, permission } = parseParams(accessParams, request.params);
+    const body = parseBody(accessBody, request.body);
+    const actor = request.user!;
+    if (id === actor.personId) {
+      return reply.status(409).send({ error: { code: 'CANNOT_CHANGE_OWN_ACCESS', message: 'You cannot change your own access: ask another administrator.' } });
+    }
+    const [person, perm] = await Promise.all([
+      app.db.selectFrom('person').select(['id', 'full_name as fullName']).where('id', '=', id).executeTakeFirst(),
+      app.db.selectFrom('permission').select(['id', 'description']).where('id', '=', permission).executeTakeFirst(),
+    ]);
+    if (person === undefined) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No user ${id}` } });
+    if (perm === undefined) return reply.status(422).send({ error: { code: 'UNKNOWN_PERMISSION', message: `There is no permission ${permission}.` } });
+    if (body.effect === 'grant' && !actor.permissions.has(permission)) {
+      return reply.status(403).send({ error: { code: 'NOT_PERMITTED', message: 'You cannot give access you do not have yourself.' } });
+    }
+
+    const fromRole = await app.db
+      .selectFrom('person_role')
+      .innerJoin('role_permission', 'role_permission.role_id', 'person_role.role_id')
+      .select('role_permission.permission_id')
+      .where('person_role.person_id', '=', id)
+      .where('role_permission.permission_id', '=', permission)
+      .executeTakeFirst();
+    // Adding what the role already gives, or removing what it does not, is just "as the role".
+    const effect = body.effect === 'grant' && fromRole !== undefined ? 'role' : body.effect === 'revoke' && fromRole === undefined ? 'role' : body.effect;
+
+    await app.db.transaction().execute(async (tx) => {
+      const before = await tx
+        .selectFrom('person_permission')
+        .select(['effect', 'note'])
+        .where('person_id', '=', id)
+        .where('permission_id', '=', permission)
+        .executeTakeFirst();
+      await tx.deleteFrom('person_permission').where('person_id', '=', id).where('permission_id', '=', permission).execute();
+      if (effect !== 'role') {
+        await tx
+          .insertInto('person_permission')
+          .values({ person_id: id, permission_id: permission, effect, note: body.note ?? null, set_by: actor.personId, set_at: new Date() })
+          .execute();
+      }
+      await tx
+        .insertInto('audit_log')
+        .values({
+          event_id: crypto.randomUUID(),
+          action_code: effect === 'grant' ? 'ACCESS_GRANTED' : effect === 'revoke' ? 'ACCESS_REVOKED' : 'ACCESS_RESET',
+          actor_id: actor.personId,
+          terminal_id: null,
+          branch_id: null,
+          entity_type: 'person',
+          entity_id: id,
+          state_before: JSON.stringify({ permission, access: before?.effect ?? 'role' }),
+          state_after: JSON.stringify({ permission, access: effect, note: body.note ?? null }),
+          occurred_at: new Date(),
+        })
+        .execute();
+      // Access beyond a role is raised for review, against the person's branch (else the first branch).
+      if (effect === 'grant' && before?.effect !== 'grant') {
+        const branch =
+          (await tx.selectFrom('person_role').select('branch_id').where('person_id', '=', id).where('branch_id', 'is not', null).executeTakeFirst())?.branch_id ??
+          (await tx.selectFrom('branch').select('id').where('is_active', '=', true).orderBy('code').executeTakeFirstOrThrow()).id;
+        await tx
+          .insertInto('exception_event')
+          .values({
+            event_id: crypto.randomUUID(),
+            kind: 'access_granted',
+            branch_id: branch,
+            terminal_id: null,
+            actor_id: actor.personId,
+            product_id: null,
+            detail: JSON.stringify({ personId: id, person: person.fullName, permission, description: perm.description, note: body.note ?? null }),
+            value_impact: null,
+            currency: null,
+            occurred_at: new Date(),
+          })
+          .execute();
+      }
+    });
+    return { permission, access: effect };
+  });
 
   app.get('/permissions', { onRequest: [app.requirePermission('user.read')] }, async () => {
     const [permissions, rolePermissions] = await Promise.all([

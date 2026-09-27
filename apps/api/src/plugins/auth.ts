@@ -26,6 +26,10 @@ declare module 'fastify' {
     requirePermission: (
       permission: string,
     ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /** Refuse requests holding none of these capabilities. */
+    requireAnyPermission: (
+      ...permissions: string[]
+    ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
 
@@ -83,6 +87,16 @@ async function plugin(app: FastifyInstance): Promise<void> {
       await app.requireAuth(request, reply);
       if (request.user === null || !request.user.permissions.has(permission)) {
         throw new NotPermitted(permission);
+      }
+    },
+  );
+
+  app.decorate(
+    'requireAnyPermission',
+    (...permissions: string[]) => async (request: FastifyRequest, reply: FastifyReply) => {
+      await app.requireAuth(request, reply);
+      if (request.user === null || !permissions.some((p) => request.user!.permissions.has(p))) {
+        throw new NotPermitted(permissions.join(' or '));
       }
     },
   );

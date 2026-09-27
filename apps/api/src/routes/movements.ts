@@ -139,7 +139,8 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    * An unresolved code returns 404 via `UnlistedBarcode`; the till is expected
    * to follow that with an exception, which is what makes the scan evidence.
    */
-  app.get('/barcodes/:code', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
+  // A scan at the till: selling is enough.
+  app.get('/barcodes/:code', { onRequest: [app.requireAnyPermission('product.read', 'movement.post')] }, async (request) => {
     const { code } = z.object({ code: z.string().trim().min(1).max(32) }).parse(request.params);
     return resolveBarcode(app.db, code);
   });

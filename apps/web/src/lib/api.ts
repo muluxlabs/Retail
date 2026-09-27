@@ -1057,7 +1057,8 @@ export type ExceptionKind =
   | 'opening_stock'
   | 'credit_limit_change'
   | 'shift_variance'
-  | 'loyalty_adjustment';
+  | 'loyalty_adjustment'
+  | 'access_granted';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1345,6 +1346,20 @@ export interface UserRow {
   lockedUntil: string | null;
   canSignIn: boolean;
   roles: { roleId: string; branchId: string | null; branchCode: string | null }[];
+  /** Access set for this person beyond (grant) or short of (revoke) their roles. */
+  overrides: { permissionId: string; effect: 'grant' | 'revoke' }[];
+}
+
+export interface UserAccess {
+  person: { id: string; fullName: string };
+  roles: { roleId: string; branchName: string | null }[];
+  permissions: {
+    id: string;
+    description: string;
+    fromRoles: string[];
+    override: null | { effect: 'grant' | 'revoke'; note: string | null; setAt: string; setByName: string };
+    effective: boolean;
+  }[];
 }
 
 // -- endpoints ---------------------------------------------------------------
@@ -1383,6 +1398,14 @@ export const api = {
 
   updateUser: (id: string, body: { isActive?: boolean; roleIds?: string[] }) =>
     request<{ ok: true }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  userAccess: (id: string) => request<UserAccess>(`/api/users/${id}/access`),
+
+  setUserAccess: (id: string, permission: string, body: { effect: 'grant' | 'revoke' | 'role'; note: string | null }) =>
+    request<{ permission: string; access: string }>(`/api/users/${id}/access/${encodeURIComponent(permission)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   resetPassword: (id: string) =>
     request<{ temporaryPassword: string }>(`/api/users/${id}/reset-password`, { method: 'POST' }),
