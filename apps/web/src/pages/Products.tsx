@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { api, ApiError, type Category, type Pack } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
@@ -60,9 +61,17 @@ export function Products() {
             {products.data !== undefined && `${products.data.total} active products`}
           </div>
           {can('product.write') && (
-            <Button variant="primary" onClick={() => setCreating((v) => !v)}>
-              {creating ? 'Cancel' : 'Add product'}
-            </Button>
+            <div className="flex gap-2">
+              <Link
+                to="/products/import"
+                className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset"
+              >
+                Import from Excel / CSV
+              </Link>
+              <Button variant="primary" onClick={() => setCreating((v) => !v)}>
+                {creating ? 'Cancel' : 'Add product'}
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -228,6 +237,8 @@ function CreateProductForm({
   ]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Items with a near-identical name, as found by the server: shown before anything is created. */
+  const [similar, setSimilar] = useState<{ id: string; name: string; sku: string; score: number }[] | null>(null);
 
   function updatePack(key: number, patch: Partial<DraftPack>) {
     setPacks((rows) =>
@@ -244,8 +255,8 @@ function CreateProductForm({
     );
   }
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(event: React.FormEvent | null, confirmSimilar = false) {
+    event?.preventDefault();
     if (packs.some((p) => p.sellPrice.trim() !== '' && parseMoney(p.sellPrice) === null)) {
       setError('A selling price has at most two decimal places, like 2.50.');
       return;
@@ -254,6 +265,7 @@ function CreateProductForm({
     setError(null);
     try {
       const created = await api.createProduct({
+        confirmSimilar,
         sku,
         name,
         baseUom,
@@ -268,9 +280,14 @@ function CreateProductForm({
           ...(mayPrice && p.sellPrice.trim() !== '' ? { sellPrice: Number(p.sellPrice) } : {}),
         })),
       });
+      setSimilar(null);
       onCreated(created.id);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      if (e instanceof ApiError && e.code === 'SIMILAR_ITEMS') {
+        setSimilar((e.detail['similar'] as { id: string; name: string; sku: string; score: number }[] | undefined) ?? []);
+      } else {
+        setError(e instanceof ApiError ? e.message : String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -425,8 +442,30 @@ function CreateProductForm({
           </div>
         )}
 
+        {similar !== null && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900" data-testid="similar-warning">
+            <div className="font-semibold">You may already have this item</div>
+            <ul className="my-1.5 space-y-0.5">
+              {similar.map((x) => (
+                <li key={x.id}>
+                  <b>{x.name}</b> · SKU {x.sku} · {Math.round(x.score * 100)}% alike
+                </li>
+              ))}
+            </ul>
+            <div>Creating a second record for the same item splits its stock and sales in two. Is “{name}” really a different item?</div>
+            <div className="mt-2 flex gap-2">
+              <Button type="button" variant="primary" onClick={() => void submit(null, true)} disabled={busy}>
+                Yes, it is different — create it
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setSimilar(null)}>
+                No, don’t create it
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={busy || similar !== null}>
             {busy ? <Spinner /> : null}
             Create product
           </Button>

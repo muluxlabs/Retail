@@ -56,6 +56,7 @@ The 60-minute route, plus these (insert where they fit the audience):
 | +8 | **Payments / Owed** | Pay a supplier by bank transfer with a screenshot as proof; aged creditors | "Every payment has its proof attached." |
 | +8 | **Staff › Access** | Give one cashier the item master; show it appear in their menu; put it back | "Access is by job, adjustable per person, and every change is on record." |
 | +6 | **Exceptions › Audit log** | Filter *Prices*: the price you changed, old → new, who and when. Then *Staff and access*: the access you just gave | For auditors: "Every change to prices, access and settings, with the value before and after — and it can't be edited." |
+| +8 | **Item master › Import** | Download the template; upload a filled file with a misspelt duplicate in it; show it held back beside the real item; import; the report | "Your whole catalogue in minutes — and it won't let you create the same item twice." |
 | +6 | **Item analysis** | Fast, not selling, days of cover | "What to reorder, what to stop buying." |
 | +2 | **Phone** | Overview and exceptions on the phone | "Run the group from anywhere." |
 

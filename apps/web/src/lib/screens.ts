@@ -39,6 +39,7 @@ export const SCREENS: Screen[] = [
   { to: '/transfers', label: 'Transfers', area: 'Stock', description: 'Send stock between branches, and receive it.', permission: ['transfer.read'], keywords: 'dispatch receive branch warehouse transit' },
 
   { to: '/products', label: 'Item master', area: 'Items and prices', description: 'Items, pack sizes and barcodes.', permission: ['product.read'], keywords: 'products items barcode pack sku catalogue' },
+  { to: '/products/import', label: 'Import items', area: 'Items and prices', description: 'Add many items at once from an Excel or CSV file.', permission: ['product.write'], keywords: 'excel csv spreadsheet upload bulk import products template' },
   { to: '/prices', label: 'Prices', area: 'Items and prices', description: 'Selling prices, costs and margins; change many at once.', permission: ['price.write'], keywords: 'price margin markup cost selling' },
 
   { to: '/suppliers', label: 'Suppliers', area: 'Buying', description: 'Suppliers, their terms and account statements.', permission: ['supplier.read'], keywords: 'vendor creditor statement' },
@@ -75,7 +76,7 @@ export const MAIN: { label: string; paths: string[] }[] = [
   { label: 'Reports', paths: ['/profit', '/sales', '/items', '/reports'] },
   { label: 'Customers', paths: ['/customers', '/debtors'] },
   { label: 'Exceptions', paths: ['/exceptions', '/audit'] },
-  { label: 'Items', paths: ['/products', '/prices'] },
+  { label: 'Items', paths: ['/products', '/prices', '/products/import'] },
 ];
 
 /** A path is "in" a screen when it is the screen or one of its sub-pages (/orders/new is in /orders). */

@@ -81,6 +81,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   // Supplier price lists: nothing usable to read; a price would be below its cost.
   INVALID_PRICE_LIST: 422,
   PRICE_BELOW_COST: 422,
+  // Item import: e.g. stock in the file but no branch chosen.
+  INVALID_ITEM_IMPORT: 422,
 };
 
 export interface ErrorBody {

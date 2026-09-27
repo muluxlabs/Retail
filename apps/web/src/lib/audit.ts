@@ -7,7 +7,7 @@ export const AUDIT_GROUPS: { name: string; actions: string[] }[] = [
   { name: 'Sign-in and passwords', actions: ['LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGIN_BLOCKED', 'LOGOUT', 'PASSWORD_CHANGED', 'PASSWORD_CHANGE_FAILED', 'USER_PASSWORD_RESET'] },
   { name: 'Staff and access', actions: ['USER_CREATED', 'USER_UPDATED', 'ACCESS_GRANTED', 'ACCESS_REVOKED', 'ACCESS_RESET'] },
   { name: 'Prices', actions: ['PRICE_CHANGED', 'SUPPLIER_PRICE_LIST'] },
-  { name: 'Items', actions: ['PRODUCT_CREATED', 'PRODUCT_UPDATED', 'PRODUCT_QUICKADDED', 'PRODUCT_APPROVED', 'PRODUCT_MERGED', 'PACK_ADDED', 'PACK_UPDATED', 'BARCODE_ATTACHED', 'BARCODE_REMOVED'] },
+  { name: 'Items', actions: ['ITEMS_IMPORTED', 'PRODUCT_CREATED', 'PRODUCT_UPDATED', 'PRODUCT_QUICKADDED', 'PRODUCT_APPROVED', 'PRODUCT_MERGED', 'PACK_ADDED', 'PACK_UPDATED', 'BARCODE_ATTACHED', 'BARCODE_REMOVED'] },
   { name: 'Stock', actions: ['OPENING_STOCK_POSTED', 'BRANCH_STOCK_RESET'] },
   { name: 'Buying', actions: ['SUPPLIER_ADDED', 'SUPPLIER_CHANGED', 'SUPPLIER_DEACTIVATED', 'PO_PLACED', 'PO_CANCELLED', 'PO_CLOSED', 'GRN_POSTED', 'PURCHASE_RETURN_POSTED', 'SUPPLIER_PAID', 'SUPPLIER_PAYMENT_VOIDED', 'PAYMENT_PROOF_ATTACHED'] },
   { name: 'Customers', actions: ['CUSTOMER_ADDED', 'CUSTOMER_CHANGED', 'CREDIT_LIMIT_CHANGED', 'CUSTOMER_PAID', 'CUSTOMER_PAYMENT_VOIDED'] },
@@ -31,6 +31,7 @@ export const AUDIT_LABEL: Record<string, string> = {
   ACCESS_RESET: 'Put access back to the role',
   PRICE_CHANGED: 'Changed a selling price',
   SUPPLIER_PRICE_LIST: 'Applied a supplier price list',
+  ITEMS_IMPORTED: 'Imported items from a spreadsheet',
   PRODUCT_CREATED: 'Added an item',
   PRODUCT_UPDATED: 'Changed an item',
   PRODUCT_QUICKADDED: 'Added an item at the till',
@@ -105,6 +106,8 @@ export function auditLink(entityType: string | null, entityId: string | null, af
       return `/shifts/${entityId}`;
     case 'day_close':
       return `/day-close/${entityId}`;
+    case 'item_import':
+      return '/products/import';
     case 'opening_stock':
       return `/opening-stock/${entityId}`;
     case 'branch':
@@ -116,7 +119,7 @@ export function auditLink(entityType: string | null, entityId: string | null, af
 
 const HIDDEN = new Set(['ip', 'userAgent', 'sessionId']);
 /** Names what the change was about; shown even though it is the same before and after. */
-const CONTEXT = ['key', 'permission', 'shiftNo', 'listNo'];
+const CONTEXT = ['key', 'permission', 'shiftNo', 'listNo', 'importNo'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The fields that changed, before → after; for a new record, what it was created with. Raw ids are left out. */

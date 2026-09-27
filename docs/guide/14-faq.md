@@ -37,6 +37,17 @@ Press it again when the connection is back. The same sale is recognised; you get
 **How do I reprint a receipt?**
 **This session** on the right of the Sell screen → **Reprint**. Older receipts: **Reports › Sales receipts** (with sales access).
 
+## Items
+
+**Can we load our whole catalogue at once?**
+Yes: **Item master › Import from Excel / CSV**. Download the template, fill it in (one row per pack), upload it, check the preview, import. Prices and stock on hand can come in the same file.
+
+**The import says an item "looks like" one we already have, but it really is different.**
+Tick **Create anyway** for it. Sizes already count as different (1kg vs 2kg); it is spelling-level similarity that is held back for you to decide.
+
+**Excel turned our barcodes into 6.0E+12.**
+Format the Barcode column as Text, retype (or paste) the barcodes, and upload again. The rows affected are listed in the preview.
+
 ## Stock
 
 **Stock on hand is negative.**

@@ -38,6 +38,7 @@ import { Stock } from './pages/Stock.js';
 import { Transfers } from './pages/Transfers.js';
 import { UserAccessPage } from './pages/UserAccess.js';
 import { Audit } from './pages/Audit.js';
+import { ItemImport } from './pages/ItemImport.js';
 import { Users } from './pages/Users.js';
 
 // The guide is its own bundle: the till never loads it.
@@ -184,6 +185,7 @@ export function App() {
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />
+          <Route path="/products/import" element={<Guard permission="product.write" home={home}><ItemImport /></Guard>} />
           <Route path="/products" element={<Guard permission="product.read" home={home}><Products /></Guard>} />
           <Route path="/prices" element={<Guard permission="price.write" home={home}><Prices /></Guard>} />
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />

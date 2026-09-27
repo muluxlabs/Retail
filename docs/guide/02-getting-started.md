@@ -53,7 +53,7 @@ An administrator does this once, in this order. Each step links to its chapter.
 | 1 | Business name, address, phone, tax number, receipt footer and paper width | **Settings** | Printed on every receipt. Also set the business **time zone** so "today" matches the shop's day. |
 | 2 | Branches | **Branches** | One per shop or warehouse. The number of active branches follows your plan. |
 | 3 | Staff accounts and roles | **Staff** | One account per person, never shared. See [Roles and access](03-roles-and-access.md). |
-| 4 | Items, packs and barcodes | **Item master** | Or let cashiers add missing items at the till; a manager reviews them. |
+| 4 | Items, packs and barcodes | **Item master › Import from Excel / CSV** | Thousands at once from a spreadsheet — with their prices and stock on hand. Or one by one, or cashiers add missing items at the till for a manager to review. |
 | 5 | Selling prices | **Prices** | One by one, in bulk by rule, or from a supplier's list. |
 | 6 | Opening stock at each branch | **Stock entry › Opening stock** | Paste straight from a spreadsheet: item, quantity, cost. |
 | 7 | Tills and safes, and their opening cash | **Cash** | Each till is a cash point with its own balance. |

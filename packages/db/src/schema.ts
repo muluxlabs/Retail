@@ -131,6 +131,24 @@ export interface ProductTable {
   /** 'pending' when created via quick-add at the till; a work item until reviewed. */
   review_state: ColumnType<ProductReviewState, ProductReviewState | undefined, ProductReviewState>;
   created_by: string | null;
+  /** The spreadsheet import that created it, if any. */
+  import_id: ColumnType<string | null, string | null | undefined, never>;
+}
+
+/** An import of items from a spreadsheet: a numbered, unchangeable record. */
+export interface ItemImportTable {
+  id: string;
+  import_no: string;
+  file_name: string | null;
+  items_created: number;
+  packs_created: number;
+  categories_created: number;
+  rows_skipped: number;
+  prices_set: boolean;
+  similar_skipped: ColumnType<number, number | undefined, never>;
+  opening_stock_id: ColumnType<string | null, string | null | undefined, never>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 export interface ProductPackTable {
@@ -790,6 +808,7 @@ export interface Database {
   role: RoleTable;
   person_role: PersonRoleTable;
   person_permission: PersonPermissionTable;
+  item_import: ItemImportTable;
   product_category: ProductCategoryTable;
   product: ProductTable;
   product_pack: ProductPackTable;

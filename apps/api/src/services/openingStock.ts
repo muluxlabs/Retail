@@ -73,6 +73,11 @@ export async function postOpeningStock(db: Db, input: OpeningStockInput): Promis
   }
 }
 
+/** Post opening stock inside a transaction the caller already holds (e.g. an item import). */
+export async function postOpeningStockInTx(tx: Tx, input: OpeningStockInput): Promise<OpeningStockResult> {
+  return run(tx, input);
+}
+
 async function run(tx: Tx, input: OpeningStockInput): Promise<OpeningStockResult> {
   checkOpeningLines(input.lines);
 

@@ -1017,6 +1017,8 @@ export interface NewProductInput {
   categoryId: string | null;
   isWeighed: boolean;
   packs: NewPackInput[];
+  /** Seen the look-alike items the server named, and this is a different item. */
+  confirmSimilar?: boolean;
 }
 
 export interface StockLine {
@@ -1350,6 +1352,59 @@ export interface UserRow {
   overrides: { permissionId: string; effect: 'grant' | 'revoke' }[];
 }
 
+export interface ImportPackPreview {
+  row: number;
+  label: string;
+  qtyBase: number;
+  barcode: string | null;
+  sellPrice: number | null;
+  isDefaultSell: boolean;
+  isDefaultBuy: boolean;
+  cost: number | null;
+  stock: number | null;
+}
+
+export interface ItemImportCheck {
+  items: {
+    key: string;
+    sku: string | null;
+    name: string;
+    category: string | null;
+    baseUom: string;
+    isWeighed: boolean;
+    rows: number[];
+    packs: ImportPackPreview[];
+    status: 'new' | 'exists' | 'similar';
+    reason: string | null;
+    similarTo: { name: string; sku: string | null; score: number; row: number | null }[];
+  }[];
+  problems: { row: number; column: string | null; message: string }[];
+  columns: { heading: string; field: string | null }[];
+  newCategories: string[];
+  summary: { rows: number; newItems: number; newPacks: number; existing: number; similar: number; problemRows: number; withStock: number };
+  mayPrice: boolean;
+  mayOpenStock: boolean;
+}
+
+export interface ItemImportResult {
+  id: string;
+  importNo: string;
+  itemsCreated: number;
+  packsCreated: number;
+  categoriesCreated: number;
+  rowsSkipped: number;
+  similarSkipped: number;
+  pricesSet: boolean;
+  openingDocNo: string | null;
+  replayed: boolean;
+  report: null | {
+    created: { name: string; sku: string; row: number; stock: number | null }[];
+    existing: { name: string; row: number; reason: string }[];
+    similarSkipped: { name: string; row: number; reason: string }[];
+    problemRows: number;
+  };
+}
+
 export interface AuditEntry {
   seq: number;
   at: string;
@@ -1414,6 +1469,35 @@ export const api = {
 
   updateUser: (id: string, body: { isActive?: boolean; roleIds?: string[] }) =>
     request<{ ok: true }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  checkItemImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<ItemImportCheck>('/api/products/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importItems: (body: {
+    id: string;
+    fileName: string | null;
+    headings: string[];
+    rows: Record<string, string>[];
+    confirmSimilar: string[];
+    stockBranchId: string | null;
+  }) =>
+    request<ItemImportResult>('/api/products/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  itemImports: () =>
+    request<{
+      items: {
+        id: string;
+        importNo: string;
+        fileName: string | null;
+        itemsCreated: number;
+        packsCreated: number;
+        categoriesCreated: number;
+        rowsSkipped: number;
+        pricesSet: boolean;
+        createdAt: string;
+        byName: string;
+      }[];
+    }>('/api/products/imports'),
 
   audit: (params: {
     from?: string;

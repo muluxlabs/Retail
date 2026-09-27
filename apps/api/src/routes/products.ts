@@ -8,9 +8,9 @@
  */
 
 import type { Database } from '@retail-ops/db';
-import { isMoney } from '@retail-ops/domain';
+import { isMoney, nameIndex } from '@retail-ops/domain';
 import type { FastifyInstance } from 'fastify';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 
 import { parseQuery, parseParams, parseBody, queryBool } from '../validation.js';
@@ -65,6 +65,8 @@ const listQuery = z.object({
 const idParams = z.object({ id: z.uuid() });
 
 const createProduct = z.object({
+  /** The person has seen the look-alike items and says this one is different. */
+  confirmSimilar: z.boolean().default(false),
   sku: z.string().trim().min(1).max(64),
   name: z.string().trim().min(1).max(200),
   baseUom: z.string().trim().min(1).max(16).default('each'),
@@ -339,6 +341,26 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
     }
     assertMayPrice(request, body.packs.some((p) => p.sellPrice !== undefined && p.sellPrice !== null));
+
+    // Duplicates: the same SKU never; the same or a near-identical name only once the person confirms.
+    const master = await sql<{ id: string; sku: string; name: string }>`SELECT id, sku, name FROM product WHERE merged_into_id IS NULL`.execute(app.db);
+    const sameSku = master.rows.find((r) => r.sku.toLowerCase() === body.sku.toLowerCase());
+    if (sameSku !== undefined) {
+      return reply.status(409).send({ error: { code: 'DUPLICATE_SKU', message: `SKU ${sameSku.sku} is already ${sameSku.name}.` } });
+    }
+    if (!body.confirmSimilar) {
+      const ix = nameIndex(master.rows);
+      const similar = [...ix.same(body.name).map((item) => ({ item, score: 1 })), ...ix.alike(body.name)].slice(0, 5);
+      if (similar.length > 0) {
+        return reply.status(409).send({
+          error: {
+            code: 'SIMILAR_ITEMS',
+            message: `${similar.length === 1 ? 'An item' : 'Items'} with a very similar name already exist${similar.length === 1 ? 's' : ''}: ${similar.map((x) => x.item.name).join(', ')}. Is this really a different item?`,
+            detail: { similar: similar.map((x) => ({ id: x.item.id, name: x.item.name, sku: x.item.sku, score: x.score })) },
+          },
+        });
+      }
+    }
 
     const created = await app.db.transaction().execute(async (tx) => {
       const product = await tx

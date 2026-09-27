@@ -20,3 +20,5 @@ export * from './customers.js';
 export * from './shifts.js';
 export * from './loyalty.js';
 export * from './supplierPrices.js';
+export * from './itemImport.js';
+export * from './similarNames.js';

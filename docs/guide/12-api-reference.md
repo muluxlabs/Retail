@@ -110,12 +110,15 @@ Paths are relative to `/api`. **Permission** is what the signed-in account needs
 | GET | `/products?search=` | product.read *or* movement.post | Items with packs, barcodes and selling prices (no costs) |
 | GET | `/barcodes/:code` | product.read *or* movement.post | Resolve a scan to an item and pack |
 | GET | `/products/:id` | product.read | One item with stock by branch and recent movements |
-| POST · PATCH | `/products`, `/products/:id` | product.write | Add / change an item |
+| POST · PATCH | `/products`, `/products/:id` | product.write | Add / change an item. Adding answers `409 SIMILAR_ITEMS` (with the look-alikes) unless `confirmSimilar: true`; an existing SKU is `409 DUPLICATE_SKU` |
 | POST · PATCH | `/products/:id/packs`, `…/packs/:packId` | product.write | Add / change a pack |
 | POST · DELETE | `/products/:id/packs/:packId/barcodes`, `/barcodes/:code` | product.write | Add / remove a barcode |
 | POST | `/products/quick-add` | product.quickadd | Add an item at the till (pending review) |
 | POST | `/products/:id/approve`, `/products/:id/merge` | product.write | Review items added at the till |
 | GET | `/categories` | product.read | Categories |
+| POST | `/products/import/check` | product.write | Check spreadsheet rows (`{headings, rows}`): new, existing, look-alike, problems |
+| POST | `/products/import` | product.write (+ stock.opening to bring stock) | Import: `{id, fileName, headings, rows, confirmSimilar: [keys], stockBranchId}` |
+| GET | `/products/imports` | product.read | Recent imports |
 | GET · PUT | `/price-list` | price.write | Packs with cost, price, margin; save price changes |
 | POST | `/price-list/fill-missing` | price.write | Price unpriced packs from cost + markup |
 
