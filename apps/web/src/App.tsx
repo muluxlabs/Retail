@@ -14,6 +14,7 @@ import { ChangePassword, Login } from './pages/Login.js';
 import { NewOrder, Orders } from './pages/Orders.js';
 import { OpeningStock, OpeningStockDetail } from './pages/OpeningStock.js';
 import { NewReturn, ReturnDetailPage, Returns } from './pages/Returns.js';
+import { NewPriceList, PriceListDetailPage, PriceLists } from './pages/PriceLists.js';
 import { DayClose, ZReportPage } from './pages/DayClose.js';
 import { ShiftReportPage, Shifts } from './pages/Shifts.js';
 import { CustomerDetailPage, Customers, DebtorsPage } from './pages/Customers.js';
@@ -48,7 +49,7 @@ const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
 const CUSTOMER_PATHS = ['/customers', '/debtors'];
 const CASH_PATHS = ['/cash', '/shifts', '/day-close'];
 const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
-const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/payments', '/owed'];
+const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'];
 
 /** A path is inside a group when it is the group's path or below it (/orders/new is inside /orders). */
 const inGroup = (group: string[] | undefined, pathname: string): boolean =>
@@ -216,6 +217,9 @@ export function App() {
           <Route path="/items" element={<Guard permission="sale.read" home={home}><Items /></Guard>} />
           <Route path="/suppliers" element={<Guard permission="supplier.read" home={home}><Suppliers /></Guard>} />
           <Route path="/suppliers/:id" element={<Guard permission="supplier.read" home={home}><SupplierDetail /></Guard>} />
+          <Route path="/price-lists" element={<Guard permission="supplier.read" home={home}><PriceLists /></Guard>} />
+          <Route path="/price-lists/new" element={<Guard permission="price.write" home={home}><NewPriceList /></Guard>} />
+          <Route path="/price-lists/:id" element={<Guard permission="supplier.read" home={home}><PriceListDetailPage /></Guard>} />
           <Route path="/orders" element={<Guard permission="supplier.read" home={home}><Orders /></Guard>} />
           <Route path="/orders/new" element={<Guard permission="po.write" home={home}><NewOrder /></Guard>} />
           <Route path="/orders/:id" element={<Guard permission="supplier.read" home={home}><OrderDetail /></Guard>} />

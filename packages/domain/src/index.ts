@@ -19,3 +19,4 @@ export * from './dayClose.js';
 export * from './customers.js';
 export * from './shifts.js';
 export * from './loyalty.js';
+export * from './supplierPrices.js';

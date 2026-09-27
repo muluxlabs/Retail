@@ -671,6 +671,40 @@ export interface CustomerBalanceView {
   balance: number;
 }
 
+/** A supplier's price list, as imported: an unchangeable document. */
+export interface SupplierPriceListTable {
+  id: string;
+  list_no: string;
+  supplier_id: string;
+  rule: ColumnType<unknown, string, never>;
+  note: string | null;
+  lines: number;
+  prices_changed: number;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface SupplierPriceListLineTable {
+  list_id: string;
+  line_no: number;
+  pack_id: string;
+  supplier_code: string | null;
+  cost: number;
+  old_cost: number | null;
+  old_sell: number | null;
+  new_sell: number | null;
+}
+
+/** What each supplier currently charges for each pack, and their code for it. */
+export interface SupplierItemTable {
+  supplier_id: string;
+  pack_id: string;
+  supplier_code: string | null;
+  cost: number;
+  list_id: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export type LoyaltyReason = 'earn' | 'redeem' | 'adjust';
 
 /** Append-only points ledger: a balance is the sum of the movements. */
@@ -772,6 +806,9 @@ export interface Database {
   shift: ShiftTable;
   loyalty_movement: LoyaltyMovementTable;
   loyalty_balance: LoyaltyBalanceView;
+  supplier_price_list: SupplierPriceListTable;
+  supplier_price_list_line: SupplierPriceListLineTable;
+  supplier_item: SupplierItemTable;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

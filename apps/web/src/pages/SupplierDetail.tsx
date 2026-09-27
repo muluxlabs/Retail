@@ -106,6 +106,9 @@ export function SupplierDetail() {
           )}
         </div>
         <div className="no-print flex flex-wrap gap-2">
+          <Link to={`/price-lists?supplierId=${s.id}`} className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset">
+            Price lists
+          </Link>
           {can('po.write') && s.isActive && (
             <Link to={`/orders/new?supplierId=${s.id}`} className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset">
               New order

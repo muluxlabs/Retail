@@ -665,6 +665,89 @@ export interface CustomerLookup {
   points: number;
 }
 
+export type PriceRuleInput =
+  | { mode: 'keep_margin'; roundTo: number }
+  | { mode: 'markup'; markupPercent: number; roundTo: number }
+  | { mode: 'costs_only' };
+
+/** As stored on an applied list. */
+export interface PriceRuleStored {
+  mode: 'keep_margin' | 'markup' | 'costs_only';
+  markupPercent?: number;
+  roundToCents?: number;
+}
+
+export interface PriceListPreview {
+  supplier: { id: string; name: string };
+  matched: number;
+  unmatched: number;
+  lines: {
+    row: number;
+    code: string;
+    description: string;
+    cost: number | null;
+    problem: string | null;
+    match: null | {
+      packId: string;
+      productId: string;
+      name: string;
+      sku: string;
+      packLabel: string;
+      by: string;
+      oldCost: number | null;
+      oldCostSource: 'supplier' | 'average' | null;
+      currentSell: number | null;
+      suggestedSell: number | null;
+      oldMargin: number | null;
+      newMargin: number | null;
+      costChangePercent: number | null;
+    };
+  }[];
+}
+
+export interface PriceListSummary {
+  id: string;
+  listNo: string;
+  supplierId: string;
+  supplierName: string;
+  lines: number;
+  pricesChanged: number;
+  rule: PriceRuleStored;
+  note: string | null;
+  createdAt: string;
+  byName: string;
+}
+
+export interface PriceListDetail extends PriceListSummary {
+  items: {
+    lineNo: number;
+    packId: string;
+    productId: string;
+    name: string;
+    sku: string;
+    packLabel: string;
+    supplierCode: string | null;
+    cost: number;
+    oldCost: number | null;
+    oldSell: number | null;
+    newSell: number | null;
+  }[];
+}
+
+export interface SupplierItem {
+  packId: string;
+  productId: string;
+  name: string;
+  sku: string;
+  packLabel: string;
+  supplierCode: string | null;
+  cost: number;
+  sellPrice: number | null;
+  updatedAt: string;
+  listNo: string;
+  listId: string;
+}
+
 export interface LoyaltyRules {
   enabled: boolean;
   pointsPerDollar: number;
@@ -1629,6 +1712,24 @@ export const api = {
     request<CustomerLookup & { phone: string }>('/api/customers/enrol', { method: 'POST', body: JSON.stringify(body) }),
 
   loyaltyRules: () => request<LoyaltyRules>('/api/loyalty/rules'),
+
+  previewPriceList: (body: { supplierId: string; text: string; rule: PriceRuleInput }) =>
+    request<PriceListPreview>('/api/supplier-price-lists/preview', { method: 'POST', body: JSON.stringify(body) }),
+
+  applyPriceList: (body: {
+    id: string;
+    supplierId: string;
+    rule: PriceRuleInput;
+    note: string | null;
+    lines: { packId: string; supplierCode: string | null; cost: number; newSell: number | null }[];
+  }) => request<{ id: string; listNo: string; pricesChanged: number; replayed: boolean }>('/api/supplier-price-lists', { method: 'POST', body: JSON.stringify(body) }),
+
+  supplierPriceLists: (params: { supplierId?: string; limit?: number } = {}) =>
+    request<{ items: PriceListSummary[] }>(`/api/supplier-price-lists${qs({ ...params })}`),
+
+  supplierPriceList: (id: string) => request<PriceListDetail>(`/api/supplier-price-lists/${id}`),
+
+  supplierItems: (supplierId: string) => request<{ items: SupplierItem[] }>(`/api/suppliers/${supplierId}/items`),
 
   customerPoints: (id: string) => request<CustomerPoints>(`/api/customers/${id}/loyalty`),
 

@@ -78,6 +78,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   // Loyalty: not valid as asked (switched off, not whole points); not enough points.
   INVALID_LOYALTY: 422,
   NOT_ENOUGH_POINTS: 409,
+  // Supplier price lists: nothing usable to read; a price would be below its cost.
+  INVALID_PRICE_LIST: 422,
+  PRICE_BELOW_COST: 422,
 };
 
 export interface ErrorBody {

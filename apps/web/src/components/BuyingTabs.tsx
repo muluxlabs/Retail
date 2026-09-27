@@ -23,6 +23,7 @@ const TABS: Tab[] = [
   { to: '/orders', label: 'Orders', any: ['supplier.read'] },
   { to: '/receive', label: 'Goods received', any: ['grn.post', 'supplier.read'] },
   { to: '/returns', label: 'Returns', any: ['supplier.read'] },
+  { to: '/price-lists', label: 'Price lists', any: ['supplier.read'] },
   { to: '/payments', label: 'Payments', any: ['supplier.read'], groupWide: true },
   { to: '/owed', label: 'Owed to suppliers', any: ['supplier.read'], groupWide: true },
 ];

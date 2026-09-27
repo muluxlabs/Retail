@@ -192,6 +192,10 @@ export function NewOrder() {
     if (branchId === '' && list.length === 1 && list[0] !== undefined) setBranchId(list[0].id);
   }, [branches.data, branchId]);
 
+  // What this supplier charges, from their last price list: new lines start at it.
+  const supplierItems = useAsync(() => (supplierId === '' ? Promise.resolve({ items: [] }) : api.supplierItems(supplierId)), [supplierId]);
+  const supplierCosts = new Map((supplierItems.data?.items ?? []).map((i) => [i.packId, i.cost]));
+
   const parsed = parseLines(lines);
   const canSubmit = supplierId !== '' && branchId !== '' && parsed.ok && !busy;
 
@@ -286,7 +290,7 @@ export function NewOrder() {
       </Card>
 
       <Card className="px-4 py-4">
-        <PurchaseLines lines={lines} onChange={setLines} />
+        <PurchaseLines lines={lines} onChange={setLines} supplierCosts={supplierCosts} prefillCosts />
       </Card>
 
       {error !== null && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">{error}</div>}

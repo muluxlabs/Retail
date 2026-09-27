@@ -83,6 +83,8 @@ export function PurchaseLines({
   costOptional = false,
   costLabel = 'Price per pack',
   note,
+  supplierCosts,
+  prefillCosts = false,
 }: {
   lines: PurchaseLine[];
   onChange: (lines: PurchaseLine[]) => void;
@@ -94,6 +96,10 @@ export function PurchaseLines({
   costLabel?: string;
   /** A remark under a line, by product id - e.g. "already 12 on hand". */
   note?: (productId: string) => string | null;
+  /** The supplier's current price per pack, by pack id (from their price list). */
+  supplierCosts?: Map<string, number>;
+  /** Fill a new line's price from the supplier's list (an order). A delivery shows it only as a hint: it must match the invoice. */
+  prefillCosts?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const results = useAsync(
@@ -105,9 +111,15 @@ export function PurchaseLines({
   const patch = (key: string, p: Partial<PurchaseLine>) => onChange(lines.map((l) => (l.key === key ? { ...l, ...p } : l)));
   const input = 'border-ink-200 focus:border-accent-500 rounded-lg border bg-white px-2 py-1.5 text-[13px] outline-none';
 
+  const listCost = (packId: string): string => {
+    const c = supplierCosts?.get(packId);
+    return c === undefined ? '' : String(Number(c.toFixed(4)));
+  };
+
   function add(p: Product) {
-    const line = lineFromProduct(p);
-    if (line === null) return;
+    const found = lineFromProduct(p);
+    if (found === null) return;
+    const line = prefillCosts ? { ...found, cost: listCost(found.packId) } : found;
     // The same product and pack twice is one line with more on it.
     const same = lines.find((l) => l.packId === line.packId && (l.poLineId ?? null) === null);
     if (same !== undefined) patch(same.key, { qty: String((parseQty(same.qty) ?? 0) + 1) });
@@ -189,7 +201,13 @@ export function PurchaseLines({
                       ) : (
                         <select
                           value={l.packId}
-                          onChange={(e) => patch(l.key, { packId: e.target.value })}
+                          onChange={(e) =>
+                            patch(l.key, {
+                              packId: e.target.value,
+                              // A price that came from the list follows the pack; a typed one stays.
+                              ...(prefillCosts && (l.cost.trim() === '' || l.cost === listCost(l.packId)) ? { cost: listCost(e.target.value) } : {}),
+                            })
+                          }
                           aria-label={`Pack of ${l.name}`}
                           className={input}
                         >
@@ -229,6 +247,11 @@ export function PurchaseLines({
                       />
                       {priceDiffers && orderedCost !== undefined && (
                         <div className="mt-0.5 text-[11px] text-amber-700">ordered at {packCost(orderedCost)}</div>
+                      )}
+                      {supplierCosts?.get(l.packId) !== undefined && (c === null || Math.abs(c - supplierCosts.get(l.packId)!) > 0.00005) && (
+                        <div className={`mt-0.5 text-[11px] ${c === null ? 'text-ink-400' : 'text-amber-700'}`} data-testid="list-price-hint">
+                          price list {packCost(supplierCosts.get(l.packId))}
+                        </div>
                       )}
                     </td>
                     <td className="tnum px-2 py-2 text-right font-medium">

@@ -107,6 +107,9 @@ export function Receive() {
   const parsed = parseLines(lines);
   const invoiceCents = invoiceTotal.trim() === '' ? null : parseMoney(invoiceTotal);
   const variance = invoiceCents === null ? null : Math.round((invoiceCents - fromCents(parsed.totalCents)) * 100) / 100;
+  // The supplier's list prices, shown beside each line: the invoice is what is recorded.
+  const supplierItems = useAsync(() => (supplierId === '' ? Promise.resolve({ items: [] }) : api.supplierItems(supplierId)), [supplierId]);
+  const supplierCosts = new Map((supplierItems.data?.items ?? []).map((i) => [i.packId, i.cost]));
   const canPost = branchId !== '' && supplierId !== '' && parsed.ok && !busy && (invoiceTotal.trim() === '' || invoiceCents !== null);
 
   async function post() {
@@ -226,7 +229,7 @@ export function Receive() {
       </Card>
 
       <Card className="px-4 py-4">
-        <PurchaseLines lines={lines} onChange={setLines} showOrdered={poId !== ''} />
+        <PurchaseLines lines={lines} onChange={setLines} showOrdered={poId !== ''} supplierCosts={supplierCosts} />
         {variance !== null && Math.abs(variance) >= 0.005 && parsed.ok && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900" data-testid="invoice-variance">
             The invoice total is {money(invoiceCents)}, but the goods add up to {money(fromCents(parsed.totalCents))} - a difference of {money(Math.abs(variance))}. What is owed
