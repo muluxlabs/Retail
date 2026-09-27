@@ -29,6 +29,7 @@ const KINDS = [
   'opening_stock',
   'credit_limit_change',
   'shift_variance',
+  'loyalty_adjustment',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

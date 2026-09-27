@@ -59,6 +59,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   opening_stock: 'Opening stock introduced',
   credit_limit_change: 'Credit limit raised',
   shift_variance: 'Till over / short on a shift',
+  loyalty_adjustment: 'Loyalty points changed by hand',
 };
 
 /**
@@ -79,6 +80,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   opening_stock: 'Stock was brought onto the books with no supplier invoice behind it. Check the quantities and costs against a count.',
   credit_limit_change: 'A customer was allowed to owe more. Check who raised it and that the customer pays on time.',
   shift_variance: 'The cash counted in a till at the start or end of a shift did not match the books. The cashier on that shift is named.',
+  loyalty_adjustment: 'Points are worth money at the till. Check who changed a customer\'s points, by how many, and the reason given.',
 };
 
 // -- primitives --------------------------------------------------------------

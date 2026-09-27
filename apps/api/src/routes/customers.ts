@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { assertInScope, scopedBranchIds } from '../scope.js';
 import { customerAccount, noteLimitChange, receivePayment, voidCustomerPayment } from '../services/customers.js';
+import { adjustPoints, customerPoints, loyaltyRules } from '../services/loyalty.js';
 import { businessTimezone, dayIn } from '../services/purchasing.js';
 import { parseBody, parseParams, parseQuery, queryBool } from '../validation.js';
 
@@ -47,6 +48,15 @@ const payBody = z.object({
   note: optText(500),
 });
 const reasonBody = z.object({ reason: text(300).min(5, 'Say why, in a few words.') });
+const enrolBody = z.object({
+  name: text(120).min(2, 'Give the customer a name.'),
+  phone: text(40).min(5, 'A phone number identifies the customer at the till.'),
+});
+const adjustBody = z.object({
+  id: z.uuid(),
+  points: z.number().int().refine((p) => p !== 0, 'Give a number of points other than zero.').refine((p) => Math.abs(p) <= 10_000_000, 'That is too many points.'),
+  note: text(300).min(5, 'Say why the points are being changed.'),
+});
 const idParams = z.object({ id: z.uuid() });
 const branchQuery = z.object({ branchId: z.uuid() });
 
@@ -79,16 +89,55 @@ export async function registerCustomerRoutes(app: FastifyInstance): Promise<void
     const q = parseQuery(lookupQuery, request.query);
     const like = `%${q.q}%`;
     const rows = await sql<Record<string, unknown>>`
-      SELECT c.id, c.code, c.name, c.phone, c.credit_limit AS "creditLimit", b.balance
-      FROM customer c JOIN customer_balance b ON b.customer_id = c.id
+      SELECT c.id, c.code, c.name, c.phone, c.credit_limit AS "creditLimit", b.balance, l.points
+      FROM customer c JOIN customer_balance b ON b.customer_id = c.id JOIN loyalty_balance l ON l.customer_id = c.id
       WHERE c.is_active AND (c.name ILIKE ${like} OR c.code ILIKE ${like} OR c.phone ILIKE ${like})
       ORDER BY c.name LIMIT 10`.execute(app.db);
     return {
       items: rows.rows.map((r) => ({
         id: r['id'], code: r['code'], name: r['name'], phone: r['phone'],
         creditLimit: r2(r['creditLimit']), balance: r2(r['balance']), available: Math.max(0, r2(n(r['creditLimit']) - n(r['balance']))),
+        points: n(r['points']),
       })),
     };
+  });
+
+  /** What the till needs to know about points: on or off, the rate, and what one is worth. */
+  app.get('/loyalty/rules', { onRequest: [app.requireAuth] }, async () => {
+    const r = await loyaltyRules(app.db);
+    return { enabled: r.enabled, pointsPerDollar: r.pointsPerDollar, pointValue: r.pointValueCents / 100 };
+  });
+
+  /** Sign up a customer at the till: a name and a phone number, no credit. */
+  app.post('/customers/enrol', { onRequest: [app.requirePermission('customer.enrol')] }, async (request, reply) => {
+    const b = parseBody(enrolBody, request.body);
+    const dup = await app.db.selectFrom('customer').select(['id', 'code', 'name']).where('phone', '=', b.phone).executeTakeFirst();
+    if (dup !== undefined) return reply.status(409).send({ error: { code: 'CUSTOMER_EXISTS', message: `${dup.name} already has the phone number ${b.phone}.`, detail: { id: dup.id, code: dup.code, name: dup.name } } });
+    const row = await app.db
+      .insertInto('customer')
+      .values({ name: b.name, phone: b.phone, email: null, address: null, id_number: null, credit_limit: 0, credit_days: 30, notes: null, created_by: request.user!.personId })
+      .returning(['id', 'code', 'name', 'phone'])
+      .executeTakeFirstOrThrow();
+    return reply.status(201).send({ ...row, creditLimit: 0, balance: 0, available: 0, points: 0 });
+  });
+
+  app.get('/customers/:id/loyalty', { onRequest: [app.requirePermission('customer.read')] }, async (request) => {
+    const { id } = parseParams(idParams, request.params);
+    const c = await app.db.selectFrom('customer').select('id').where('id', '=', id).executeTakeFirst();
+    if (c === undefined) throw new InvalidCustomer('No such customer.');
+    return customerPoints(app.db, id);
+  });
+
+  app.post('/customers/:id/loyalty', { onRequest: [app.requirePermission('loyalty.adjust')] }, async (request, reply) => {
+    const { id } = parseParams(idParams, request.params);
+    const b = parseBody(adjustBody, request.body);
+    // Raised against the manager's branch; else where the customer usually buys; else the first branch.
+    const branchId =
+      request.user!.branchIds[0] ??
+      (await app.db.selectFrom('sale').select('branch_id').where('customer_id', '=', id).orderBy('occurred_at', 'desc').executeTakeFirst())?.branch_id ??
+      (await app.db.selectFrom('branch').select('id').where('is_active', '=', true).orderBy('code').executeTakeFirstOrThrow()).id;
+    const r = await adjustPoints(app.db, { eventId: b.id, customerId: id, points: b.points, note: b.note, actorId: request.user!.personId, branchId });
+    return reply.status(r.replayed ? 200 : 201).send(r);
   });
 
   app.post('/customers', { onRequest: [app.requirePermission('customer.write')] }, async (request, reply) => {

@@ -140,6 +140,27 @@ export function ReceiptSheet({ receipt }: { receipt: ReceiptData }) {
         )}
       </div>
 
+      {receipt.loyalty !== null && (
+        <div className="mt-1 border-t border-dashed border-black pt-1" data-testid="receipt-points">
+          {receipt.loyalty.spent > 0 && (
+            <div className="flex justify-between">
+              <span>Points used</span>
+              <span className="tnum">{receipt.loyalty.spent.toLocaleString()}</span>
+            </div>
+          )}
+          {receipt.loyalty.earned > 0 && (
+            <div className="flex justify-between">
+              <span>Points earned</span>
+              <span className="tnum">{receipt.loyalty.earned.toLocaleString()}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold">
+            <span>Points balance</span>
+            <span className="tnum">{receipt.loyalty.balance.toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
       {b.footer !== '' && <div className="mt-2 text-center">{b.footer}</div>}
       <div className="mt-1 text-center text-[10px]">{receipt.currency}</div>
     </div>

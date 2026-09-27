@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
 
+import { LoyaltyCard } from '../components/LoyaltyCard.js';
 import { ReceiveDialog } from '../components/ReceiveDialog.js';
 import { api, ApiError, type CustomerInput } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
@@ -333,6 +334,8 @@ export function CustomerDetailPage() {
         </Card>
       </div>
 
+      <LoyaltyCard customerId={c.id} />
+
       <Card className="overflow-hidden">
         <div className="border-ink-100 flex items-center justify-between border-b px-4 py-2.5">
           <div>
@@ -427,7 +430,7 @@ export function CustomerDetailPage() {
       {receiving !== null && (
         <ReceiveDialog
           branchId={receiving}
-          customer={{ id: c.id, code: c.code, name: c.name, phone: c.phone, creditLimit: c.creditLimit, balance: a.balance, available: data.available }}
+          customer={{ id: c.id, code: c.code, name: c.name, phone: c.phone, creditLimit: c.creditLimit, balance: a.balance, available: data.available, points: 0 }}
           onClose={() => setReceiving(null)}
           onDone={(no) => {
             setReceiving(null);

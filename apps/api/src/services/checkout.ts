@@ -48,6 +48,7 @@ import type { Database } from '@retail-ops/db';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
 
+import { loyaltyRules, pointsToSpend, postSalePoints, salePoints } from './loyalty.js';
 import { shiftForSale } from './shifts.js';
 import { postMovementInTx, wac } from './stock.js';
 
@@ -95,6 +96,8 @@ export interface ReceiptView {
   cashier: { id: string; name: string };
   till: string | null;
   customer: { id: string; code: string; name: string } | null;
+  /** Points this sale earned and spent, and the customer's balance straight after it. */
+  loyalty: { earned: number; spent: number; balance: number } | null;
   currency: string;
   lines: {
     lineNo: number;
@@ -245,6 +248,7 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
   // -- a sale charged to a customer's account ---------------------------------------------------------
   const accountCents = input.payments.reduce((sum, p) => sum + (p.paymentTypeId === 'account' ? toCents(p.amount) : 0), 0);
   let customerId: string | null = null;
+  let customerRef: { id: string; name: string } | null = null;
   if (input.customerId !== undefined && input.customerId !== null) {
     // Locked, so two tills charging the same customer at once cannot both squeeze under the limit.
     const c = await sql<{ id: string; name: string; isActive: boolean; limit: number }>`
@@ -256,9 +260,15 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       checkCredit(customer.name, toCents(Number(owed?.balance ?? 0)), toCents(Number(customer.limit)), accountCents);
     }
     customerId = customer.id;
+    customerRef = { id: customer.id, name: customer.name };
   } else if (accountCents > 0) {
     throw new InvalidBasket('Choose the customer whose account this is charged to.');
   }
+
+  // -- points spent as payment: checked while the customer is locked ------------------------------------
+  const loyaltyCents = input.payments.reduce((sum, p) => sum + (p.paymentTypeId === 'loyalty' ? toCents(p.amount) : 0), 0);
+  const rules = await loyaltyRules(tx);
+  const pointsSpent = await pointsToSpend(tx, customerRef, loyaltyCents, rules);
 
   const cashCents = input.payments.reduce(
     (sum, p) => sum + (typeById.get(p.paymentTypeId)?.is_cash === true ? toCents(p.amount) : 0),
@@ -398,6 +408,14 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       })),
     )
     .execute();
+
+  // Points: what was spent, and what the rest of the bill earned.
+  if (customerId !== null) {
+    await postSalePoints(tx, {
+      saleId: input.saleId, customerId, branchId: input.branchId, cashierId: input.cashierId,
+      spent: pointsSpent, eligibleCents: totals.netCents - loyaltyCents, rules, at: occurredAt,
+    });
+  }
 
   // The till's cash position: what the drawer actually gained, i.e. cash applied
   // to the bill, not the note handed over (the change went back out).
@@ -545,6 +563,8 @@ export async function getReceipt(db: Db | Tx, saleId: string): Promise<ReceiptVi
       ? null
       : ((await db.selectFrom('customer').select(['id', 'code', 'name']).where('id', '=', sale.customerId).executeTakeFirst()) ?? null);
 
+  const loyalty = sale.customerId === null ? null : await salePoints(db, sale.id, sale.customerId);
+
   return {
     id: sale.id,
     receiptNo: sale.receiptNo,
@@ -553,6 +573,7 @@ export async function getReceipt(db: Db | Tx, saleId: string): Promise<ReceiptVi
     cashier: { id: sale.cashierId, name: sale.cashierName },
     till: sale.tillName,
     customer,
+    loyalty,
     currency: sale.currency,
     lines: lines.map((l) => ({
       ...l,

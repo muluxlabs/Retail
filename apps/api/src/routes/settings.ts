@@ -90,6 +90,28 @@ SETTINGS['shifts_required'] = {
   parse: (raw) => (raw === 'yes' || raw === 'no' ? { ok: true } : { ok: false, message: 'Answer yes or no.' }),
 };
 
+SETTINGS['loyalty_enabled'] = {
+  label: 'Loyalty points',
+  description: 'yes: named customers earn points on what they pay for, and can spend them at the till. no: nothing is earned, and points cannot be spent.',
+  parse: (raw) => (raw === 'yes' || raw === 'no' ? { ok: true } : { ok: false, message: 'Answer yes or no.' }),
+};
+SETTINGS['loyalty_points_per_dollar'] = {
+  label: 'Points earned per dollar',
+  description: 'Points a customer earns for each whole dollar paid (not counting what they paid with points). 1 = a point per dollar; 0.5 = a point every $2. Rounded down.',
+  parse: (raw) =>
+    /^\d{1,3}(\.\d{1,2})?$/.test(raw) && Number(raw) > 0
+      ? { ok: true }
+      : { ok: false, message: 'A number above zero, up to two decimal places (e.g. 1 or 0.5).' },
+};
+SETTINGS['loyalty_point_value'] = {
+  label: 'Value of one point ($)',
+  description: 'What one point is worth when a customer spends it at the till, in whole cents: 0.01 = a point is worth one cent, so 100 points pay $1.00.',
+  parse: (raw) =>
+    /^\d{1,3}(\.\d{1,2})?$/.test(raw) && Number(raw) >= 0.01
+      ? { ok: true }
+      : { ok: false, message: 'An amount of at least 0.01, in whole cents.' },
+};
+
 const keyParams = z.object({ key: z.string().trim().min(1).max(100) });
 const updateBody = z.object({ value: z.string().trim().max(500) });
 

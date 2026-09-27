@@ -44,7 +44,8 @@ export type ExceptionKind =
   | 'stock_reset'
   | 'opening_stock'
   | 'credit_limit_change'
-  | 'shift_variance';
+  | 'shift_variance'
+  | 'loyalty_adjustment';
 
 export type ProductReviewState = 'approved' | 'pending';
 
@@ -670,6 +671,31 @@ export interface CustomerBalanceView {
   balance: number;
 }
 
+export type LoyaltyReason = 'earn' | 'redeem' | 'adjust';
+
+/** Append-only points ledger: a balance is the sum of the movements. */
+export interface LoyaltyMovementTable {
+  seq: Generated<number>;
+  event_id: string;
+  customer_id: string;
+  points: number;
+  reason: LoyaltyReason;
+  sale_id: string | null;
+  branch_id: string;
+  note: string | null;
+  actor_id: string;
+  occurred_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** VIEW. Every customer's points. */
+export interface LoyaltyBalanceView {
+  customer_id: string;
+  earned: number;
+  redeemed: number;
+  adjusted: number;
+  points: number;
+}
+
 export interface ShiftTable {
   id: string;
   shift_no: string;
@@ -744,6 +770,8 @@ export interface Database {
   customer_payment: CustomerPaymentTable;
   customer_balance: CustomerBalanceView;
   shift: ShiftTable;
+  loyalty_movement: LoyaltyMovementTable;
+  loyalty_balance: LoyaltyBalanceView;
   barcode: BarcodeTable;
   stock_movement: StockMovementTable;
   exception_event: ExceptionEventTable;

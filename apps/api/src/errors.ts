@@ -75,6 +75,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   SHIFT_REQUIRED: 409,
   SHIFT_ALREADY_OPEN: 409,
   SHIFTS_STILL_OPEN: 409,
+  // Loyalty: not valid as asked (switched off, not whole points); not enough points.
+  INVALID_LOYALTY: 422,
+  NOT_ENOUGH_POINTS: 409,
 };
 
 export interface ErrorBody {

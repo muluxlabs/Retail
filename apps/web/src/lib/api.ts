@@ -661,6 +661,35 @@ export interface CustomerLookup {
   creditLimit: number;
   balance: number;
   available: number;
+  /** Loyalty points held. */
+  points: number;
+}
+
+export interface LoyaltyRules {
+  enabled: boolean;
+  pointsPerDollar: number;
+  /** What one point is worth at the till, in dollars. */
+  pointValue: number;
+}
+
+export interface CustomerPoints {
+  enabled: boolean;
+  points: number;
+  worth: number;
+  earned: number;
+  redeemed: number;
+  adjusted: number;
+  movements: {
+    seq: number;
+    points: number;
+    reason: 'earn' | 'redeem' | 'adjust';
+    note: string | null;
+    at: string;
+    saleId: string | null;
+    receiptNo: string | null;
+    branchName: string;
+    byName: string;
+  }[];
 }
 
 export interface CustomerInput {
@@ -834,6 +863,7 @@ export interface Receipt {
   cashier: { id: string; name: string };
   till: string | null;
   customer: { id: string; code: string; name: string } | null;
+  loyalty: { earned: number; spent: number; balance: number } | null;
   currency: string;
   lines: ReceiptLine[];
   gross: number;
@@ -943,7 +973,8 @@ export type ExceptionKind =
   | 'stock_reset'
   | 'opening_stock'
   | 'credit_limit_change'
-  | 'shift_variance';
+  | 'shift_variance'
+  | 'loyalty_adjustment';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1593,6 +1624,16 @@ export const api = {
     request<{ items: CustomerRow[] }>(`/api/customers${qs({ ...params })}`),
 
   customerLookup: (q: string) => request<{ items: CustomerLookup[] }>(`/api/customers/lookup${qs({ q })}`),
+
+  enrolCustomer: (body: { name: string; phone: string }) =>
+    request<CustomerLookup & { phone: string }>('/api/customers/enrol', { method: 'POST', body: JSON.stringify(body) }),
+
+  loyaltyRules: () => request<LoyaltyRules>('/api/loyalty/rules'),
+
+  customerPoints: (id: string) => request<CustomerPoints>(`/api/customers/${id}/loyalty`),
+
+  adjustPoints: (id: string, body: { id: string; points: number; note: string }) =>
+    request<{ balance: number; replayed: boolean }>(`/api/customers/${id}/loyalty`, { method: 'POST', body: JSON.stringify(body) }),
 
   customer: (id: string) => request<CustomerDetail>(`/api/customers/${id}`),
 

@@ -134,9 +134,13 @@ export function Sell() {
     [search],
   );
 
+  // Points are a way to pay only while loyalty is switched on.
+  const loyalty = useAsync(() => api.loyaltyRules(), []);
+  const loyaltyOn = loyalty.data?.enabled === true;
+  const pointCents = Math.max(1, Math.round((loyalty.data?.pointValue ?? 0.01) * 100));
   const tillTypes: PaymentType[] = useMemo(
-    () => (paymentTypes.data ?? []).filter((t) => t.atTill),
-    [paymentTypes.data],
+    () => (paymentTypes.data ?? []).filter((t) => t.atTill && (t.id !== 'loyalty' || loyaltyOn)),
+    [paymentTypes.data, loyaltyOn],
   );
   const typeById = useMemo(() => new Map(tillTypes.map((t) => [t.id, t])), [tillTypes]);
 
@@ -223,7 +227,26 @@ export function Sell() {
         : accountCents > Math.round(customer.available * 100)
           ? `${customer.name} has ${money(customer.available)} of credit left.`
           : null;
-  const canComplete = cartOk && netCents > 0 && tender.problem === null && accountProblem === null && !badReceived && !needsTill && !needsShift && !busy;
+  // Paying with points: a named customer, whole points, and no more than they hold.
+  const loyaltyCents = pay.reduce((sum, p, i) => sum + (p.typeId === 'loyalty' ? (tender.rows[i]?.appliedCents ?? 0) : 0), 0);
+  const loyaltyProblem =
+    loyaltyCents === 0
+      ? null
+      : customer === null
+        ? 'Choose the customer whose points are being spent.'
+        : loyaltyCents % pointCents !== 0
+          ? `Points are worth ${money(pointCents / 100)} each: pay a whole number of points.`
+          : loyaltyCents / pointCents > customer.points
+            ? `${customer.name} has ${customer.points.toLocaleString()} points (worth ${money((customer.points * pointCents) / 100)}).`
+            : null;
+  const pointsUsable = loyaltyOn && customer !== null && customer.points > 0 && netCents > 0 && !pay.some((p) => p.typeId === 'loyalty');
+  function usePoints() {
+    if (customer === null) return;
+    const cents = Math.floor(Math.min(customer.points * pointCents, netCents) / pointCents) * pointCents;
+    if (cents <= 0) return;
+    setPay((rows) => [{ key: newKey(), typeId: 'loyalty', received: (cents / 100).toFixed(2), reference: '' }, ...rows.filter((r) => r.typeId !== 'loyalty')]);
+  }
+  const canComplete = cartOk && netCents > 0 && tender.problem === null && accountProblem === null && loyaltyProblem === null && !badReceived && !needsTill && !needsShift && !busy;
 
   function reset() {
     setCart([]);
@@ -773,7 +796,12 @@ export function Sell() {
               </dl>
 
               <div className="border-ink-100 mt-4 border-t pt-3">
-                <CustomerPicker value={customer} onChange={setCustomer} />
+                <CustomerPicker value={customer} onChange={setCustomer} showPoints={loyaltyOn} allowEnrol />
+                {pointsUsable && (
+                  <button onClick={usePoints} className="text-accent-700 mt-1.5 text-[12px] font-medium hover:underline" data-testid="use-points">
+                    Pay with points (up to {money(Math.min(customer.points * pointCents, netCents) / 100)})
+                  </button>
+                )}
               </div>
 
               <div className="border-ink-100 mt-3 border-t pt-3">
@@ -902,6 +930,9 @@ export function Sell() {
                 <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">
                   {error}
                 </div>
+              )}
+              {loyaltyProblem !== null && netCents > 0 && (
+                <p className="mt-3 text-[12px] text-amber-800" data-testid="points-problem">{loyaltyProblem}</p>
               )}
               {accountProblem !== null && netCents > 0 && (
                 <p className="mt-3 text-[12px] text-amber-800" data-testid="account-problem">{accountProblem}</p>
