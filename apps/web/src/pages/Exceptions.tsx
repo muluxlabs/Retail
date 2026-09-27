@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 
+import { ControlsTabs } from '../components/ControlsTabs.js';
 import { api, ApiError, type ExceptionRow, type ExceptionState, type Product } from '../lib/api.js';
 import {
   Badge,
@@ -64,6 +65,7 @@ export function Exceptions() {
 
   return (
     <div className="space-y-4">
+      <ControlsTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Exception queue</h1>

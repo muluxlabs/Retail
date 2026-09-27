@@ -1350,6 +1350,22 @@ export interface UserRow {
   overrides: { permissionId: string; effect: 'grant' | 'revoke' }[];
 }
 
+export interface AuditEntry {
+  seq: number;
+  at: string;
+  recordedAt: string;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  entityName: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
 export interface UserAccess {
   person: { id: string; fullName: string };
   roles: { roleId: string; branchName: string | null }[];
@@ -1398,6 +1414,22 @@ export const api = {
 
   updateUser: (id: string, body: { isActive?: boolean; roleIds?: string[] }) =>
     request<{ ok: true }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  audit: (params: {
+    from?: string;
+    to?: string;
+    actions?: string;
+    actorId?: string;
+    branchId?: string;
+    entityType?: string;
+    entityId?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => request<{ items: AuditEntry[]; total: number; limit: number; offset: number }>(`/api/audit${qs({ ...params })}`),
+
+  auditFacets: () =>
+    request<{ actions: { action: string; n: number }[]; people: { id: string; name: string; n: number }[] }>('/api/audit/facets'),
 
   userAccess: (id: string) => request<UserAccess>(`/api/users/${id}/access`),
 

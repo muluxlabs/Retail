@@ -61,6 +61,26 @@ const idParams = z.object({ id: z.uuid() });
 const branchQuery = z.object({ branchId: z.uuid() });
 
 const n = (v: unknown): number => Number(v ?? 0);
+
+/** A customer added or changed, in the audit log (credit limits are also logged on their own). */
+async function auditCustomer(
+  app: FastifyInstance,
+  action: 'CUSTOMER_ADDED' | 'CUSTOMER_CHANGED',
+  actorId: string,
+  branchId: string | null,
+  customerId: string,
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown>,
+): Promise<void> {
+  await app.db
+    .insertInto('audit_log')
+    .values({
+      event_id: crypto.randomUUID(), action_code: action, actor_id: actorId, terminal_id: null, branch_id: branchId,
+      entity_type: 'customer', entity_id: customerId,
+      state_before: before === null ? null : JSON.stringify(before), state_after: JSON.stringify(after), occurred_at: new Date(),
+    })
+    .execute();
+}
 const r2 = (v: unknown): number => Math.round(n(v) * 100) / 100;
 
 export async function registerCustomerRoutes(app: FastifyInstance): Promise<void> {
@@ -118,6 +138,7 @@ export async function registerCustomerRoutes(app: FastifyInstance): Promise<void
       .values({ name: b.name, phone: b.phone, email: null, address: null, id_number: null, credit_limit: 0, credit_days: 30, notes: null, created_by: request.user!.personId })
       .returning(['id', 'code', 'name', 'phone'])
       .executeTakeFirstOrThrow();
+    await auditCustomer(app, 'CUSTOMER_ADDED', request.user!.personId, request.user!.branchIds[0] ?? null, row.id, null, { name: row.name, phone: row.phone, via: 'signed up at the till' });
     return reply.status(201).send({ ...row, creditLimit: 0, balance: 0, available: 0, points: 0 });
   });
 
@@ -155,6 +176,9 @@ export async function registerCustomerRoutes(app: FastifyInstance): Promise<void
       .returning(['id', 'code', 'name'])
       .executeTakeFirstOrThrow();
     if (b.creditLimit > 0) await noteLimitChange(app.db, row.id, row.name, request.user!.personId, 0, b.creditLimit, request.user!.branchIds[0] ?? null);
+    await auditCustomer(app, 'CUSTOMER_ADDED', request.user!.personId, request.user!.branchIds[0] ?? null, row.id, null, {
+      name: b.name, phone: b.phone ?? null, email: b.email ?? null, creditLimit: b.creditLimit, creditDays: b.creditDays,
+    });
     return reply.status(201).send(row);
   });
 
@@ -185,6 +209,19 @@ export async function registerCustomerRoutes(app: FastifyInstance): Promise<void
       .execute();
     if (b.creditLimit !== undefined && b.creditLimit !== n(before.credit_limit)) {
       await noteLimitChange(app.db, id, b.name ?? before.name, request.user!.personId, n(before.credit_limit), b.creditLimit, request.user!.branchIds[0] ?? null);
+    }
+    // Everything else that changed (the credit limit has its own entry above).
+    const was: Record<string, unknown> = {
+      name: before.name, phone: before.phone, email: before.email, address: before.address, idNumber: before.id_number,
+      creditDays: n(before.credit_days), notes: before.notes, isActive: before.is_active,
+    };
+    const changed = Object.keys(was).filter((k) => (b as Record<string, unknown>)[k] !== undefined && (b as Record<string, unknown>)[k] !== was[k]);
+    if (changed.length > 0) {
+      await auditCustomer(
+        app, 'CUSTOMER_CHANGED', request.user!.personId, request.user!.branchIds[0] ?? null, id,
+        Object.fromEntries(changed.map((k) => [k, was[k]])),
+        Object.fromEntries(changed.map((k) => [k, (b as Record<string, unknown>)[k]])),
+      );
     }
     return { ok: true };
   });

@@ -35,6 +35,7 @@ import { Settings } from './pages/Settings.js';
 import { Stock } from './pages/Stock.js';
 import { Transfers } from './pages/Transfers.js';
 import { UserAccessPage } from './pages/UserAccess.js';
+import { Audit } from './pages/Audit.js';
 import { Users } from './pages/Users.js';
 
 /**
@@ -69,7 +70,7 @@ const NAV: { to: string; label: string; end?: boolean; permission: string | stri
   // single permission covers everyone who should see this tab, so it takes
   // any-of. The page itself still decides what each of them can actually do.
   { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move', 'day.close', 'shift.manage'], group: CASH_PATHS },
-  { to: '/exceptions', label: 'Exceptions', permission: 'exception.read' },
+  { to: '/exceptions', label: 'Exceptions', permission: ['exception.read', 'audit.read'], group: ['/exceptions', '/audit'] },
   { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
   // One tab for every report; the screens inside are switched by the ReportTabs bar.
   { to: '/reports', label: 'Reports', permission: ['sale.read', 'stock.read'], group: REPORT_PATHS },
@@ -88,6 +89,7 @@ function navTarget(item: { to: string; group?: string[] }, can: (p: string) => b
   if (item.to === '/cash') return can('cash.read') || can('cash.count') || can('cash.move') ? '/cash' : can('shift.manage') ? '/shifts' : '/day-close';
   if (item.to === '/count') return can('stock.adjust') ? '/count' : '/opening-stock';
   if (item.to === '/reports') return can('sale.read') ? '/profit' : item.to;
+  if (item.to === '/exceptions') return can('exception.read') ? '/exceptions' : '/audit';
   return item.to;
 }
 
@@ -251,6 +253,7 @@ export function App() {
           <Route path="/customers" element={<Guard permission="customer.read" home={home}><Customers /></Guard>} />
           <Route path="/customers/:id" element={<Guard permission="customer.read" home={home}><CustomerDetailPage /></Guard>} />
           <Route path="/debtors" element={<Guard permission="customer.read" home={home}><DebtorsPage /></Guard>} />
+          <Route path="/audit" element={<Guard permission="audit.read" home={home}><Audit /></Guard>} />
           <Route path="/exceptions" element={<Guard permission="exception.read" home={home}><Exceptions /></Guard>} />
           <Route path="/stock" element={<Guard permission="stock.read" home={home}><Stock /></Guard>} />
           <Route path="/reports" element={<Guard permission="stock.read" home={home}><Reports /></Guard>} />
