@@ -93,8 +93,8 @@ export interface NameIndex<T extends NamedItem> {
   add(item: T): void;
   /** Items whose standardised name is identical. */
   same(name: string): T[];
-  /** Items that look alike (not identical), best first. */
-  alike(name: string, limit?: number): { item: T; score: number }[];
+  /** Items that look alike (not identical), best first. A lower threshold gives suggestions rather than warnings. */
+  alike(name: string, limit?: number, threshold?: number): { item: T; score: number }[];
 }
 
 export function nameIndex<T extends NamedItem>(items: readonly T[] = []): NameIndex<T> {
@@ -119,7 +119,7 @@ export function nameIndex<T extends NamedItem>(items: readonly T[] = []): NameIn
   return {
     add,
     same: (name) => byNorm.get(normaliseName(name)) ?? [],
-    alike: (name, limit = 3) => {
+    alike: (name, limit = 3, threshold = LOOK_ALIKE) => {
       const norm = normaliseName(name);
       const grams = trigrams(norm);
       const nums = numbers(norm);
@@ -137,7 +137,7 @@ export function nameIndex<T extends NamedItem>(items: readonly T[] = []): NameIn
         const c = all[i]!;
         if (c.norm === norm || c.nums !== nums) continue;
         const sc = score(norm, grams, c.norm, c.grams);
-        if (sc >= LOOK_ALIKE) out.push({ item: c.item, score: Math.round(sc * 100) / 100 });
+        if (sc >= threshold) out.push({ item: c.item, score: Math.round(sc * 100) / 100 });
       }
       return out.sort((x, y) => y.score - x.score).slice(0, limit);
     },

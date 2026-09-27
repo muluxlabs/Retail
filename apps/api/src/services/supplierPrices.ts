@@ -11,6 +11,7 @@
 import {
   InvalidPriceList,
   marginPercent,
+  nameIndex,
   parseCostMicro,
   parsePriceList,
   PriceBelowCost,
@@ -65,9 +66,11 @@ async function packInfo(db: Db | Tx, supplierId: string, packIds: string[]): Pro
 }
 
 /** code (lower-cased) -> pack and how it was matched. */
-async function matchCodes(db: Db, supplierId: string, codes: string[]): Promise<Map<string, { packId: string; by: 'supplier code' | 'barcode' | 'SKU' }>> {
+type MatchedBy = 'supplier code' | 'barcode' | 'SKU' | 'your choice';
+
+async function matchCodes(db: Db, supplierId: string, codes: string[]): Promise<Map<string, { packId: string; by: MatchedBy }>> {
   const lower = [...new Set(codes.map((c) => c.toLowerCase()))];
-  const out = new Map<string, { packId: string; by: 'supplier code' | 'barcode' | 'SKU' }>();
+  const out = new Map<string, { packId: string; by: MatchedBy }>();
   if (lower.length === 0) return out;
   const [own, bars, skus] = await Promise.all([
     sql<{ code: string; packId: string }>`
@@ -96,6 +99,8 @@ export interface PreviewLine {
   description: string;
   cost: number | null;
   problem: string | null;
+  /** For a line that matched nothing: items whose name is like the line's description. */
+  suggestions: { packId: string; name: string; sku: string; packLabel: string; score: number }[];
   match: null | {
     packId: string;
     productId: string;
@@ -113,7 +118,7 @@ export interface PreviewLine {
   };
 }
 
-export async function previewPriceList(db: Db, input: { supplierId: string; text: string; rule: PriceRule }) {
+export async function previewPriceList(db: Db, input: { supplierId: string; text: string; rule: PriceRule; links?: Record<string, string> }) {
   const s = await db.selectFrom('supplier').select(['id', 'name']).where('id', '=', input.supplierId).executeTakeFirst();
   if (s === undefined) throw new InvalidPriceList('No such supplier.');
   const parsed = parsePriceList(input.text);
@@ -121,15 +126,40 @@ export async function previewPriceList(db: Db, input: { supplierId: string; text
   if (parsed.length > 5_000) throw new InvalidPriceList('That list is over 5,000 lines: split it into parts.');
 
   const matches = await matchCodes(db, input.supplierId, parsed.filter((l) => l.problem === null).map((l) => l.code));
+  // Lines the importer linked to an item themselves ("did you mean…?"): their choice wins.
+  for (const [code, packId] of Object.entries(input.links ?? {})) matches.set(code.toLowerCase(), { packId, by: 'your choice' });
+  // Suggestions for what still matches nothing, from the description on the line.
+  const unmatched = parsed.filter((l) => l.problem === null && !matches.has(l.code.toLowerCase()));
+  const suggestIx =
+    unmatched.length === 0
+      ? null
+      : nameIndex(
+          (
+            await sql<{ id: string; name: string; sku: string; label: string }>`
+              SELECT DISTINCT ON (p.id) pk.id, p.name, p.sku, pk.label
+              FROM product p JOIN product_pack pk ON pk.product_id = p.id
+              WHERE p.merged_into_id IS NULL AND p.is_active
+              ORDER BY p.id, pk.is_default_buy DESC, pk.qty_base DESC`.execute(db)
+          ).rows.map((r) => ({ id: r.id, name: r.name, sku: `${r.sku}|${r.label}` })),
+        );
+  const suggest = (l: { code: string; description: string }) => {
+    if (suggestIx === null) return [];
+    const text = l.description.trim() !== '' ? l.description : l.code;
+    const hits = [...suggestIx.same(text).map((item) => ({ item, score: 1 })), ...suggestIx.alike(text, 3, 0.55)].slice(0, 3);
+    return hits.map((h) => {
+      const [sku = '', packLabel = ''] = (h.item.sku ?? '').split('|');
+      return { packId: h.item.id, name: h.item.name, sku, packLabel, score: h.score };
+    });
+  };
   const info = await packInfo(db, input.supplierId, [...new Set([...matches.values()].map((m) => m.packId))]);
   const seen = new Map<string, number>();
 
   const lines: PreviewLine[] = parsed.map((l) => {
-    const base = { row: l.row, code: l.code, description: l.description, cost: l.costMicro === null ? null : fromMicro(l.costMicro) };
+    const base = { row: l.row, code: l.code, description: l.description, cost: l.costMicro === null ? null : fromMicro(l.costMicro), suggestions: [] as PreviewLine['suggestions'] };
     if (l.problem !== null) return { ...base, problem: l.problem, match: null };
     const m = matches.get(l.code.toLowerCase());
     const p = m === undefined ? undefined : info.get(m.packId);
-    if (m === undefined || p === undefined) return { ...base, problem: 'No item of ours has this code, barcode or SKU', match: null };
+    if (m === undefined || p === undefined) return { ...base, problem: 'No item of ours has this code, barcode or SKU', suggestions: suggest(l), match: null };
     const dup = seen.get(m.packId);
     if (dup !== undefined) return { ...base, problem: `The same item as line ${dup}`, match: null };
     seen.set(m.packId, l.row);

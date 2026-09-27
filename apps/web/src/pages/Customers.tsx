@@ -152,9 +152,17 @@ export function Customers() {
           </p>
         </div>
         {can('customer.write') && (
-          <Button variant="primary" onClick={() => setAdding((v) => !v)}>
-            {adding ? 'Cancel' : 'Add customer'}
-          </Button>
+          <div className="flex gap-2">
+            <Link
+              to="/customers/import"
+              className="bg-white text-ink-700 ring-ink-200 hover:bg-ink-50 inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset"
+            >
+              Import from Excel / CSV
+            </Link>
+            <Button variant="primary" onClick={() => setAdding((v) => !v)}>
+              {adding ? 'Cancel' : 'Add customer'}
+            </Button>
+          </div>
         )}
       </div>
       {adding && (

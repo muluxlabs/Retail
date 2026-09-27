@@ -21,6 +21,7 @@ import { useAuth } from '../lib/auth.js';
 import { fromCents, parseCost, parseQty } from '../lib/basketMath.js';
 import { packCost, shortDate, shortDateTime } from '../lib/buying.js';
 import { parsePasted } from '../lib/openingPaste.js';
+import { findColumn, OPENING_TEMPLATE, readSpreadsheet, writeTemplate } from '../lib/spreadsheet.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, money, qty, useAsync } from '../lib/ui.js';
 
 const field = 'border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none';
@@ -192,6 +193,44 @@ export function OpeningStock() {
           </div>
           {pasting && (
             <div className="mb-4 space-y-2" data-testid="paste-panel">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => void writeTemplate(OPENING_TEMPLATE)}>Download template</Button>
+                <label className="text-accent-700 cursor-pointer text-[12.5px] font-medium hover:underline">
+                  Open a file (Excel or CSV)…
+                  <input
+                    type="file"
+                    accept=".xlsx,.csv,.txt,.tsv"
+                    className="hidden"
+                    aria-label="Opening stock file"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = '';
+                      if (f === undefined) return;
+                      void readSpreadsheet(f).then(
+                        (sh) => {
+                          // The file becomes lines in the paste box: code, quantity, cost - checked exactly like a paste.
+                          const bar = findColumn(sh.headings, ['barcode', 'ean']);
+                          const sku = findColumn(sh.headings, ['sku or barcode', 'sku', 'code', 'item code', 'product code']);
+                          const q = findColumn(sh.headings, ['quantity', 'qty', 'packs', 'count', 'stock', 'stock on hand', 'on hand']);
+                          const c = findColumn(sh.headings, ['cost per pack', 'cost', 'unit cost', 'cost price']);
+                          if ((bar === undefined && sku === undefined) || q === undefined) {
+                            setPasteReport({ added: 0, problems: ['The file needs a column for the SKU or barcode, and one for the quantity. Use the template.'] });
+                            return;
+                          }
+                          const lines = sh.rows
+                            .map((r) => [(bar !== undefined && r[bar] !== '' ? r[bar] : sku !== undefined ? r[sku] : '') ?? '', r[q] ?? '', c === undefined ? '' : (r[c] ?? '')])
+                            .filter(([code, qtyText]) => code !== '' || qtyText !== '')
+                            .map((cells) => cells.join('\t'));
+                          setPasteText(lines.join('\n'));
+                          setPasteReport(null);
+                        },
+                        (err: unknown) => setPasteReport({ added: 0, problems: [err instanceof Error ? err.message : String(err)] }),
+                      );
+                    }}
+                  />
+                </label>
+                <span className="text-ink-400 text-[11.5px]">The file’s rows appear below; check them, then Add to the list.</span>
+              </div>
               <textarea
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}

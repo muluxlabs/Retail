@@ -11,6 +11,13 @@
 
 A phone number belongs to one customer only, so the same person is not signed up twice.
 
+**Many at once:** **Customers › Import from Excel / CSV** — download the template (Name, Phone, Email, Address, ID number, Credit limit, Days to pay, Notes), fill it in, upload it, check the preview, import. The same protection as for items:
+
+- a customer whose **phone is already on file** (written any way: *0772…*, *+263 772…*) — or with the **same name and no phone** — is skipped;
+- a **near-identical name**, or the same name with a different phone, is held back until you tick **Create anyway**;
+- problem rows are listed by row and column, and can be downloaded to fix;
+- credit limits in the file are raised **once** for review, for the whole import.
+
 ## Selling on credit
 
 At the till, choose **On account (credit)** as the payment method and name the customer. The sale goes through only if it fits within their **credit left**; two tills charging the same customer at the same moment cannot both squeeze under the limit.

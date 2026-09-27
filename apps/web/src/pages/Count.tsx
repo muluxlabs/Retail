@@ -24,6 +24,7 @@ import { StockEntryTabs } from '../components/StockEntryTabs.js';
 import { api, ApiError, type Branch } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { useMyBranches } from '../lib/myBranches.js';
+import { COUNT_TEMPLATE_COLUMNS, findColumn, readSpreadsheet, writeTemplate } from '../lib/spreadsheet.js';
 import { Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
 interface Row {
@@ -46,6 +47,7 @@ export function Count() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CountResult | null>(null);
+  const [uploadReport, setUploadReport] = useState<{ filled: number; notFound: string[]; bad: string[] } | null>(null);
 
   const branches = useMyBranches();
   const stock = useAsync(
@@ -87,6 +89,72 @@ export function Count() {
         : [{ productId: p.id, productName: p.name, sku: p.sku, book: 0, baseUom: p.baseUom, counted: '' }, ...rs],
     );
     setAddSearch('');
+  }
+
+  /** A count sheet for this branch: every item on the list, with a blank Counted column to fill in. */
+  function downloadCountSheet() {
+    const branchName = branches.list.find((b) => b.id === branchId)?.name ?? 'branch';
+    void writeTemplate({
+      fileName: `count-sheet-${branchName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      sheet: 'Count',
+      columns: COUNT_TEMPLATE_COLUMNS,
+      notes: ['Fill in Counted for what you counted. Leave a line blank if you did not count it: blank is not zero.', 'Add rows at the bottom for items not listed (SKU or barcode, and the count).'],
+      rows: rows.map((r) => [r.sku, r.productName, r.baseUom, '']),
+    });
+  }
+
+  /** Counts from a file fill in the Counted column; nothing is posted until Post count. */
+  async function uploadCounts(file: File) {
+    setError(null);
+    try {
+      const sh = await readSpreadsheet(file);
+      const codeCol = findColumn(sh.headings, ['sku', 'code', 'barcode', 'item code', 'product code', 'sku or barcode']);
+      const countCol = findColumn(sh.headings, ['counted', 'count', 'quantity', 'qty', 'physical', 'on shelf']);
+      if (codeCol === undefined || countCol === undefined) {
+        setError('The file needs an SKU (or barcode) column and a Counted column. Download the count sheet to see the layout.');
+        return;
+      }
+      const bySku = new Map(rows.map((r) => [r.sku.toLowerCase(), r.productId]));
+      const updates = new Map<string, string>();
+      const added: Row[] = [];
+      const notFound: string[] = [];
+      const bad: string[] = [];
+      for (const [i, r] of sh.rows.entries()) {
+        const code = (r[codeCol] ?? '').trim();
+        const counted = (r[countCol] ?? '').trim().replace(',', '.');
+        if (code === '' || counted === '') continue; // not counted stays not counted
+        if (!/^\d+(\.\d+)?$/.test(counted)) {
+          bad.push(`Row ${i + 2}: "${counted}" for ${code} is not a number`);
+          continue;
+        }
+        const known = bySku.get(code.toLowerCase()) ?? added.find((a) => a.sku.toLowerCase() === code.toLowerCase())?.productId;
+        if (known !== undefined) {
+          updates.set(known, counted);
+          continue;
+        }
+        // Not on the list: an item with no history here yet, by barcode or SKU.
+        try {
+          const hit = await api.resolveBarcode(code);
+          added.push({ productId: hit.productId, productName: hit.productName, sku: hit.sku, book: 0, baseUom: '', counted });
+          continue;
+        } catch {
+          /* not a barcode: try it as a SKU */
+        }
+        const found = (await api.products({ search: code, limit: 5 })).items.find((p) => p.sku.toLowerCase() === code.toLowerCase());
+        if (found !== undefined) added.push({ productId: found.id, productName: found.name, sku: found.sku, book: 0, baseUom: found.baseUom, counted });
+        else notFound.push(code);
+      }
+      // Counts for items already listed are filled in; items found by code but not listed are added on top.
+      for (const a of added) updates.set(a.productId, a.counted);
+      setRows((rs) => {
+        const listed = new Set(rs.map((r) => r.productId));
+        const fresh = added.filter((a) => !listed.has(a.productId));
+        return [...fresh, ...rs.map((r) => (updates.has(r.productId) ? { ...r, counted: updates.get(r.productId)! } : r))];
+      });
+      setUploadReport({ filled: updates.size, notFound, bad });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   const visible = rows.filter(
@@ -187,7 +255,32 @@ export function Count() {
             <div className="text-ink-400 text-[12px]">
               {entered.length} of {rows.length} lines entered
             </div>
+            <Button onClick={downloadCountSheet} disabled={rows.length === 0}>
+              Download count sheet
+            </Button>
+            <label className="border-ink-200 text-ink-700 hover:bg-ink-50 inline-flex cursor-pointer items-center rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] font-medium">
+              Upload counts…
+              <input
+                type="file"
+                accept=".xlsx,.csv,.txt,.tsv"
+                className="hidden"
+                aria-label="Count file"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f !== undefined) void uploadCounts(f);
+                }}
+              />
+            </label>
           </div>
+
+          {uploadReport !== null && (
+            <div className="border-accent-300/60 bg-accent-50 rounded-lg border px-3 py-2 text-[12.5px]" data-testid="count-upload-report">
+              <b>{uploadReport.filled}</b> count{uploadReport.filled === 1 ? '' : 's'} filled in from the file — check them below, then post.
+              {uploadReport.notFound.length > 0 && <div className="text-amber-800">Not found: {uploadReport.notFound.slice(0, 20).join(', ')}{uploadReport.notFound.length > 20 && ` and ${uploadReport.notFound.length - 20} more`}</div>}
+              {uploadReport.bad.length > 0 && <div className="text-red-700">{uploadReport.bad.slice(0, 10).join('; ')}</div>}
+            </div>
+          )}
 
           {error !== null && <ErrorNote error={error} />}
 

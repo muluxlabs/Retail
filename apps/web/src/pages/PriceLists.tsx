@@ -130,6 +130,8 @@ export function NewPriceList() {
   const [note, setNote] = useState('');
   const [preview, setPreview] = useState<PriceListPreview | null>(null);
   const [choices, setChoices] = useState<Record<number, Choice>>({});
+  /** Lines linked to an item by hand ("did you mean…?"): code (lower case) -> pack. */
+  const [links, setLinks] = useState<Record<string, string>>({});
   const [id] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -150,19 +152,21 @@ export function NewPriceList() {
     setPreview(null);
   }
 
-  async function doPreview() {
+  async function doPreview(withLinks: Record<string, string> = links) {
     if (rule === null) return;
     setBusy(true);
     setError(null);
     try {
-      const p = await api.previewPriceList({ supplierId, text, rule });
+      const p = await api.previewPriceList({ supplierId, text, rule, links: withLinks });
+      const kept = preview === null ? {} : choices;
       setPreview(p);
       const c: Record<number, Choice> = {};
       for (const l of p.lines) {
         if (l.match === null || l.cost === null) continue;
         const priceMoves = l.match.suggestedSell !== null && l.match.suggestedSell !== l.match.currentSell;
         const costMoves = l.match.oldCost === null || Math.abs(l.match.oldCost - l.cost) > 0.00005;
-        c[l.row] = { tick: priceMoves || costMoves, sell: l.match.suggestedSell === null ? '' : l.match.suggestedSell.toFixed(2) };
+        // A line already decided on keeps its choice when the list is checked again after linking.
+        c[l.row] = kept[l.row] ?? { tick: priceMoves || costMoves, sell: l.match.suggestedSell === null ? '' : l.match.suggestedSell.toFixed(2) };
       }
       setChoices(c);
     } catch (e) {
@@ -298,7 +302,14 @@ export function NewPriceList() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => void doPreview()} disabled={supplierId === '' || text.trim() === '' || rule === null || busy}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setLinks({});
+              void doPreview({});
+            }}
+            disabled={supplierId === '' || text.trim() === '' || rule === null || busy}
+          >
             {busy && preview === null ? <Spinner /> : null}
             Preview
           </Button>
@@ -411,6 +422,24 @@ export function NewPriceList() {
                   <li key={l.row}>
                     <span className="text-ink-400">Line {l.row}:</span> <span className="font-mono">{l.code || '—'}</span> {l.description} {l.cost !== null && `· ${packCost(l.cost)}`}{' '}
                     <span className="text-amber-800">— {l.problem}</span>
+                    {l.suggestions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-4" data-testid="did-you-mean">
+                        <span className="text-ink-500">Did you mean:</span>
+                        {l.suggestions.map((sg) => (
+                          <button
+                            key={sg.packId}
+                            onClick={() => {
+                              const next = { ...links, [l.code.toLowerCase()]: sg.packId };
+                              setLinks(next);
+                              void doPreview(next);
+                            }}
+                            className="border-accent-300/60 bg-accent-50 text-accent-700 hover:bg-accent-100 rounded-md border px-2 py-0.5 text-[12px]"
+                          >
+                            {sg.name} · {sg.packLabel} <span className="text-ink-400">({Math.round(sg.score * 100)}%)</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

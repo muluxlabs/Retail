@@ -10,6 +10,8 @@ Everything to do with suppliers sits under **Buying**, with a tab for each step:
 
 ![Suppliers](images/suppliers.jpg)
 
+**Many at once:** **Suppliers › Import from Excel / CSV** — template columns: Supplier name, Contact person, Phone, Email, Address, TIN / VAT number, Terms (*credit*, *cash on delivery*, *prepaid* — everyday words like *COD* or *pay upfront* are understood), Days to pay, Notes. A supplier already on file (same name, or same tax number) is skipped; a misspelt name is held back until you tick **Create anyway**.
+
 Open a supplier for their **account statement**: every delivery, payment and return in date order with a running balance, what is overdue and by how long, their orders, and their price lists. Print it to send to the supplier.
 
 ![A supplier's account](images/supplier-account.jpg)
@@ -55,7 +57,7 @@ When a supplier sends new prices, **Buying › Price lists › Import a price li
    - **Record costs only** — selling prices are left alone.
 
    Suggested prices are rounded **up** (to 1c, 5c, 10c, 50c or $1) so the margin is never less than intended.
-3. **Preview.** Every matched line shows old → new cost (and the % change), the price now, the suggested new price (which you can change), and the margin before → after. Lines that could not be matched are listed with the reason. Nothing has changed yet.
+3. **Preview.** Every matched line shows old → new cost (and the % change), the price now, the suggested new price (which you can change), and the margin before → after. Lines that could not be matched are listed with the reason — and, where the line's description looks like one of your items, **Did you mean…?** suggestions: click the right one and the line is linked. Once the list is applied, the supplier's own code is remembered, so next time that line matches by itself. Nothing has changed yet.
 4. **Tick the lines to apply** and **Apply**. A price below its new cost is refused.
 
 ![Previewing a supplier's price list](images/price-list-preview.jpg)

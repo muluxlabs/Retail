@@ -39,6 +39,7 @@ import { Transfers } from './pages/Transfers.js';
 import { UserAccessPage } from './pages/UserAccess.js';
 import { Audit } from './pages/Audit.js';
 import { ItemImport } from './pages/ItemImport.js';
+import { RecordImport } from './pages/RecordImport.js';
 import { Users } from './pages/Users.js';
 
 // The guide is its own bundle: the till never loads it.
@@ -146,6 +147,7 @@ export function App() {
           <Route path="/sales" element={<Guard permission="sale.read" home={home}><Sales /></Guard>} />
           <Route path="/profit" element={<Guard permission="sale.read" home={home}><Profit /></Guard>} />
           <Route path="/items" element={<Guard permission="sale.read" home={home}><Items /></Guard>} />
+          <Route path="/suppliers/import" element={<Guard permission="supplier.write" home={home}><RecordImport kind="suppliers" /></Guard>} />
           <Route path="/suppliers" element={<Guard permission="supplier.read" home={home}><Suppliers /></Guard>} />
           <Route path="/suppliers/:id" element={<Guard permission="supplier.read" home={home}><SupplierDetail /></Guard>} />
           <Route path="/price-lists" element={<Guard permission="supplier.read" home={home}><PriceLists /></Guard>} />
@@ -178,6 +180,7 @@ export function App() {
           <Route path="/shifts/:id" element={<Guard permission={['shift.open', 'shift.manage', 'sale.read']} home={home}><ShiftReportPage /></Guard>} />
           <Route path="/day-close" element={<Guard permission={['day.close', 'sale.read']} home={home}><DayClose /></Guard>} />
           <Route path="/day-close/:id" element={<Guard permission={['day.close', 'sale.read']} home={home}><ZReportPage /></Guard>} />
+          <Route path="/customers/import" element={<Guard permission="customer.write" home={home}><RecordImport kind="customers" /></Guard>} />
           <Route path="/customers" element={<Guard permission="customer.read" home={home}><Customers /></Guard>} />
           <Route path="/customers/:id" element={<Guard permission="customer.read" home={home}><CustomerDetailPage /></Guard>} />
           <Route path="/debtors" element={<Guard permission="customer.read" home={home}><DebtorsPage /></Guard>} />

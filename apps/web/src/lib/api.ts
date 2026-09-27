@@ -687,6 +687,7 @@ export interface PriceListPreview {
     description: string;
     cost: number | null;
     problem: string | null;
+    suggestions: { packId: string; name: string; sku: string; packLabel: string; score: number }[];
     match: null | {
       packId: string;
       productId: string;
@@ -1386,6 +1387,33 @@ export interface ItemImportCheck {
   mayOpenStock: boolean;
 }
 
+export interface RecordImportCheck {
+  records: {
+    record: Record<string, unknown> & { row: number; name: string };
+    key: string;
+    status: 'new' | 'exists' | 'similar';
+    reason: string | null;
+    similarTo: { name: string; code: string; score: number; row: number | null }[];
+  }[];
+  problems: { row: number; column: string | null; message: string }[];
+  columns: { heading: string; field: string | null }[];
+  summary: { rows: number; new: number; existing: number; similar: number; problemRows: number };
+}
+
+export interface RecordImportResult {
+  id: string;
+  created: number;
+  existing: number;
+  similarSkipped: number;
+  problemRows: number;
+  replayed: boolean;
+  report: null | {
+    created: { name: string; code: string; row: number }[];
+    existing: { name: string; row: number; reason: string }[];
+    similarSkipped: { name: string; row: number; reason: string }[];
+  };
+}
+
 export interface ItemImportResult {
   id: string;
   importNo: string;
@@ -1482,6 +1510,18 @@ export const api = {
     stockBranchId: string | null;
   }) =>
     request<ItemImportResult>('/api/products/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  checkCustomerImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<RecordImportCheck>('/api/customers/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importCustomers: (body: { id: string; fileName: string | null; headings: string[]; rows: Record<string, string>[]; confirmSimilar: string[] }) =>
+    request<RecordImportResult>('/api/customers/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  checkSupplierImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<RecordImportCheck>('/api/suppliers/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importSuppliers: (body: { id: string; fileName: string | null; headings: string[]; rows: Record<string, string>[]; confirmSimilar: string[] }) =>
+    request<RecordImportResult>('/api/suppliers/import', { method: 'POST', body: JSON.stringify(body) }),
 
   itemImports: () =>
     request<{
@@ -1852,7 +1892,7 @@ export const api = {
 
   loyaltyRules: () => request<LoyaltyRules>('/api/loyalty/rules'),
 
-  previewPriceList: (body: { supplierId: string; text: string; rule: PriceRuleInput }) =>
+  previewPriceList: (body: { supplierId: string; text: string; rule: PriceRuleInput; links?: Record<string, string> }) =>
     request<PriceListPreview>('/api/supplier-price-lists/preview', { method: 'POST', body: JSON.stringify(body) }),
 
   applyPriceList: (body: {

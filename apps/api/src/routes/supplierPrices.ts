@@ -30,7 +30,13 @@ const toRule = (r: RuleBody) =>
 const cost = z.number().positive().max(10_000_000).refine((n) => Math.abs(n * 10_000 - Math.round(n * 10_000)) < 1e-6, 'A cost has at most four decimals.');
 const sell = z.number().positive().max(10_000_000).refine((n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, 'A price has at most two decimals.');
 
-const previewBody = z.object({ supplierId: z.uuid(), text: z.string().max(1_000_000), rule: ruleBody });
+const previewBody = z.object({
+  supplierId: z.uuid(),
+  text: z.string().max(1_000_000),
+  rule: ruleBody,
+  /** Codes on the list the importer linked to an item themselves: code -> pack id. */
+  links: z.record(z.string().max(60), z.uuid()).default({}),
+});
 const applyBody = z.object({
   id: z.uuid(),
   supplierId: z.uuid(),
@@ -55,7 +61,7 @@ export async function registerSupplierPriceRoutes(app: FastifyInstance): Promise
 
   app.post('/supplier-price-lists/preview', { onRequest: [app.requirePermission('price.write'), needsSupplierRead] }, async (request) => {
     const b = parseBody(previewBody, request.body);
-    return previewPriceList(app.db, { supplierId: b.supplierId, text: b.text, rule: toRule(b.rule) });
+    return previewPriceList(app.db, { supplierId: b.supplierId, text: b.text, rule: toRule(b.rule), links: b.links });
   });
 
   app.post('/supplier-price-lists', { onRequest: [app.requirePermission('price.write'), needsSupplierRead] }, async (request, reply) => {

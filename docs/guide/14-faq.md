@@ -45,6 +45,9 @@ Yes: **Item master › Import from Excel / CSV**. Download the template, fill it
 **The import says an item "looks like" one we already have, but it really is different.**
 Tick **Create anyway** for it. Sizes already count as different (1kg vs 2kg); it is spelling-level similarity that is held back for you to decide.
 
+**Can we import customers and suppliers too?**
+Yes: **Customers › Import from Excel / CSV** and **Suppliers › Import from Excel / CSV**, each with its own template. Opening stock and stock takes also take a file (Excel or CSV).
+
 **Excel turned our barcodes into 6.0E+12.**
 Format the Barcode column as Text, retype (or paste) the barcodes, and upload again. The rows affected are listed in the preview.
 

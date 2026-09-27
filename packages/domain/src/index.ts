@@ -22,3 +22,4 @@ export * from './loyalty.js';
 export * from './supplierPrices.js';
 export * from './itemImport.js';
 export * from './similarNames.js';
+export * from './recordImport.js';

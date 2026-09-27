@@ -105,13 +105,17 @@ Every price change is recorded in the [audit log](09-reports-and-controls.md#the
 
 ## Stock take
 
-**Stock entry › Stock take**: choose the branch, count, type what is on the shelf. Only items you typed a count for are posted — an item left blank stays as it was; it is never assumed to be zero. Posting writes each difference to the ledger, valued at average cost, and differences become *count variance* exceptions.
+**Stock entry › Stock take**: choose the branch, count, type what is on the shelf.
+
+**Counting on paper or in Excel:** **Download count sheet** gives an Excel file listing every item at the branch with a blank *Counted* column (in the item's base unit). Fill it in — on a tablet, or print it — and **Upload counts**: the counts fill in on screen, items found by SKU or barcode that were not on the list are added, and any code it cannot find is named. Nothing is posted until you check the screen and press **Post count**.
+
+Only items you typed a count for are posted — an item left blank stays as it was; it is never assumed to be zero. Posting writes each difference to the ledger, valued at average cost, and differences become *count variance* exceptions.
 
 ![Stock take](images/stock-take.jpg)
 
 ## Opening stock
 
-**Stock entry › Opening stock** brings the stock already on a branch's shelves onto the books — for a new branch, or when starting fresh. Search items or **paste a list from a spreadsheet** (item, quantity, cost per pack). Items that already have stock at the branch are flagged: those need a stock take instead. Posting creates one numbered document (OPN-…), and a work item for the auditor to check it.
+**Stock entry › Opening stock** brings the stock already on a branch's shelves onto the books — for a new branch, or when starting fresh. Search items, **paste a list from a spreadsheet**, or **open a file** — *Paste a list › Download template*, fill in SKU or barcode, quantity and cost per pack, then *Open a file (Excel or CSV)*: its rows go through exactly the same checks as a paste. Items that already have stock at the branch are flagged: those need a stock take instead. Posting creates one numbered document (OPN-…), and a work item for the auditor to check it.
 
 ![Opening stock](images/opening-stock.jpg)
 

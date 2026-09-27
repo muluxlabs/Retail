@@ -114,3 +114,101 @@ export async function writeTemplateXlsx(): Promise<void> {
     { sheet: 'How to fill this in', data: help, columns: [{ width: 16 }, { width: 10 }, { width: 90 }, { width: 18 }] },
   ]).toFile('item-import-template.xlsx');
 }
+
+
+export interface TemplateColumn {
+  heading: string;
+  required: boolean;
+  help: string;
+  examples: string[];
+}
+
+export interface TemplateDef {
+  /** Without extension. */
+  fileName: string;
+  /** The name of the data sheet (the second sheet explains the columns). */
+  sheet: string;
+  columns: TemplateColumn[];
+  /** Lines at the foot of the help sheet. */
+  notes: string[];
+  /** Rows to put in the data sheet instead of the examples (e.g. a count sheet listing the branch's items). */
+  rows?: string[][];
+}
+
+export const CUSTOMER_TEMPLATE: TemplateDef = {
+  fileName: 'customer-import-template',
+  sheet: 'Customers',
+  columns: [
+    { heading: 'Name', required: true, help: 'The customer or business name.', examples: ['Mai Rudo Tuckshop', 'Joseph Sibanda'] },
+    { heading: 'Phone', required: false, help: 'One phone number. It identifies the customer: two customers cannot share one.', examples: ['0772 555 101', '+263 773 555 202'] },
+    { heading: 'Email', required: false, help: 'Optional.', examples: ['rudo@example.com', ''] },
+    { heading: 'Address', required: false, help: 'Optional.', examples: ['Stand 45, Riverside', ''] },
+    { heading: 'ID number', required: false, help: 'National ID or company registration, optional.', examples: ['', ''] },
+    { heading: 'Credit limit', required: false, help: 'How much they may owe at once. Blank or 0: cash only. Credit given is raised for review.', examples: ['300.00', '0'] },
+    { heading: 'Days to pay', required: false, help: 'Days after a sale on account that it must be paid. Default 30.', examples: ['30', ''] },
+    { heading: 'Notes', required: false, help: 'Optional.', examples: ['', ''] },
+  ],
+  notes: ['One row per customer. A customer whose phone is already on file is skipped, never duplicated.', 'Delete the example rows before importing.'],
+};
+
+export const SUPPLIER_TEMPLATE: TemplateDef = {
+  fileName: 'supplier-import-template',
+  sheet: 'Suppliers',
+  columns: [
+    { heading: 'Supplier name', required: true, help: 'The supplier’s name. Two suppliers cannot share a name.', examples: ['Harvest Foods Ltd', 'Golden Crust Bakery'] },
+    { heading: 'Contact person', required: false, help: 'Optional.', examples: ['Sales desk', 'Mr Ncube'] },
+    { heading: 'Phone', required: false, help: 'Optional.', examples: ['+263 24 270 1111', '0772 000 222'] },
+    { heading: 'Email', required: false, help: 'Optional.', examples: ['orders@harvest.example', ''] },
+    { heading: 'Address', required: false, help: 'Optional.', examples: ['9 Industrial Road, Harare', ''] },
+    { heading: 'TIN / VAT number', required: false, help: 'Their tax number. Two suppliers cannot share one.', examples: ['2000123456', ''] },
+    { heading: 'Terms', required: false, help: 'credit, cash on delivery, or prepaid. Default: credit.', examples: ['credit', 'cash on delivery'] },
+    { heading: 'Days to pay', required: false, help: 'For credit terms: days after delivery that payment is due. Default 30.', examples: ['30', ''] },
+    { heading: 'Notes', required: false, help: 'Optional.', examples: ['', 'Delivers Tuesdays'] },
+  ],
+  notes: ['One row per supplier. A supplier already on file (same name or tax number) is skipped, never duplicated.', 'Delete the example rows before importing.'],
+};
+
+export const OPENING_TEMPLATE: TemplateDef = {
+  fileName: 'opening-stock-template',
+  sheet: 'Opening stock',
+  columns: [
+    { heading: 'SKU or barcode', required: true, help: 'The item’s SKU, or the barcode of the pack being counted.', examples: ['SUG2', '6001234567906'] },
+    { heading: 'Item name', required: false, help: 'For your reference only; the SKU or barcode decides the item.', examples: ['White sugar 2kg', 'White sugar 2kg (bale)'] },
+    { heading: 'Quantity', required: true, help: 'How many of that pack are on the shelf (a SKU means its buying pack; a barcode means that pack).', examples: ['24', '5'] },
+    { heading: 'Cost per pack', required: false, help: 'What one of that pack cost. Leave blank if not known.', examples: ['2.10', '20.50'] },
+  ],
+  notes: ['One row per item, for items with nothing on hand at the branch yet. Items already in stock need a stock take instead.'],
+};
+
+export const COUNT_TEMPLATE_COLUMNS: TemplateColumn[] = [
+  { heading: 'SKU', required: true, help: 'The item’s SKU (or a barcode).', examples: [] },
+  { heading: 'Item name', required: false, help: 'For your reference only.', examples: [] },
+  { heading: 'Unit', required: false, help: 'What the count is in: the item’s base unit (each, kg…).', examples: [] },
+  { heading: 'Counted', required: true, help: 'What is physically on the shelf, in that unit. Leave blank if not counted — blank is not zero.', examples: [] },
+];
+
+/** Any template as an Excel file: the data sheet, and a sheet explaining each column. */
+export async function writeTemplate(def: TemplateDef): Promise<void> {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+  const header = def.columns.map((c) => ({ value: c.heading, fontWeight: 'bold' as const, backgroundColor: c.required ? '#FDE68A' : '#E5E7EB' }));
+  const body = def.rows ?? (def.columns[0]!.examples.length === 0 ? [] : def.columns[0]!.examples.map((_, i) => def.columns.map((c) => c.examples[i] ?? '')));
+  const data = [header, ...body.map((r) => r.map((v) => ({ type: String, value: v }))), ...Array.from({ length: 300 }, () => def.columns.map(() => ({ type: String, value: '' })))];
+  const bold = (value: string) => ({ value, fontWeight: 'bold' as const });
+  const help = [
+    [bold('Column'), bold('Needed?'), bold('What to put')],
+    ...def.columns.map((c) => [{ value: c.heading }, { value: c.required ? 'needed' : 'optional' }, { value: c.help }]),
+    [],
+    ...def.notes.map((n) => [{ value: n }]),
+  ];
+  await writeXlsxFile([
+    { sheet: def.sheet, data, columns: def.columns.map((c) => ({ width: Math.max(14, c.heading.length + 4) })) },
+    { sheet: 'How to fill this in', data: help, columns: [{ width: 18 }, { width: 10 }, { width: 100 }] },
+  ]).toFile(`${def.fileName}.xlsx`);
+}
+
+/** Pick the column a heading list calls by any of these names (case, spaces and punctuation ignored). */
+export function findColumn(headings: string[], names: string[]): string | undefined {
+  const sq = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wanted = names.map(sq);
+  return headings.find((h) => wanted.includes(sq(h)));
+}

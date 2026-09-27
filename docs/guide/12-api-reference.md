@@ -170,12 +170,13 @@ Paths are relative to `/api`. **Permission** is what the signed-in account needs
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
 | GET · POST · PATCH | `/suppliers`, `/suppliers/:id` | supplier.read / supplier.write | Suppliers and their account |
+| POST | `/suppliers/import/check`, `/suppliers/import` | supplier.write | Import suppliers from spreadsheet rows |
 | GET | `/payables` | supplier.read | Owed to suppliers (aged) |
 | GET · POST | `/purchase-orders`, `/purchase-orders/:id(/cancel|/close)` | supplier.read / po.write | Purchase orders |
 | GET · POST | `/goods-received`, `/goods-received/:id` | supplier.read / grn.post | Deliveries (GRNs) |
 | GET · POST | `/purchase-returns`, `/purchase-returns/:id` | supplier.read / purchase.return | Returns (PRNs) |
 | GET · POST | `/supplier-payments`, `/supplier-payments/:id(/void|/proofs)` | supplier.read / supplier.pay | Payments and proof of payment |
-| POST | `/supplier-price-lists/preview` | price.write + supplier.read | Match a pasted list; suggested prices |
+| POST | `/supplier-price-lists/preview` | price.write + supplier.read | Match a pasted list; suggested prices; `suggestions` for unmatched lines; `links` `{code: packId}` to link lines by hand |
 | POST | `/supplier-price-lists` | price.write + supplier.read | Apply a price list |
 | GET | `/supplier-price-lists(/:id)`, `/suppliers/:id/items` | supplier.read | Applied lists; a supplier's current costs |
 
@@ -187,6 +188,7 @@ Paths are relative to `/api`. **Permission** is what the signed-in account needs
 | GET | `/debtors` | customer.read | Owed by customers (aged) |
 | POST | `/customer-payments`, `/customer-payments/:id/void` | customer.receive / customer.write | Payments received |
 | GET · POST | `/customers/:id/loyalty` | customer.read / loyalty.adjust | Points history; adjust points |
+| POST | `/customers/import/check`, `/customers/import` | customer.write | Import customers from spreadsheet rows (`confirmSimilar` for look-alikes) |
 
 ### Reports and controls
 

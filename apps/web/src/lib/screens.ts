@@ -30,6 +30,7 @@ export const SCREENS: Screen[] = [
   { to: '/day-close', label: 'End of day', area: 'Selling and cash', description: 'The X report, and closing the day with the Z report.', permission: ['day.close', 'sale.read'], keywords: 'z report x report close day cash up takings' },
 
   { to: '/customers', label: 'Customers', area: 'Customers', description: 'Customers, credit limits, statements and loyalty points.', permission: ['customer.read'], keywords: 'credit account loyalty points statement' },
+  { to: '/customers/import', label: 'Import customers', area: 'Customers', description: 'Add many customers at once from an Excel or CSV file.', permission: ['customer.write'], keywords: 'excel csv spreadsheet upload bulk import customers template' },
   { to: '/debtors', label: 'Owed by customers', area: 'Customers', description: 'Aged debtors: who owes what, and how overdue.', permission: ['customer.read'], keywords: 'debtors receivables ageing overdue' },
 
   { to: '/stock', label: 'Stock on hand', area: 'Stock', description: 'What each branch holds and what it is worth.', permission: ['stock.read'], keywords: 'inventory quantity value below zero negative' },
@@ -43,6 +44,7 @@ export const SCREENS: Screen[] = [
   { to: '/prices', label: 'Prices', area: 'Items and prices', description: 'Selling prices, costs and margins; change many at once.', permission: ['price.write'], keywords: 'price margin markup cost selling' },
 
   { to: '/suppliers', label: 'Suppliers', area: 'Buying', description: 'Suppliers, their terms and account statements.', permission: ['supplier.read'], keywords: 'vendor creditor statement' },
+  { to: '/suppliers/import', label: 'Import suppliers', area: 'Buying', description: 'Add many suppliers at once from an Excel or CSV file.', permission: ['supplier.write'], keywords: 'excel csv spreadsheet upload bulk import suppliers vendors template' },
   { to: '/orders', label: 'Purchase orders', area: 'Buying', description: 'Order stock from suppliers and follow deliveries.', permission: ['supplier.read'], keywords: 'po order buy' },
   { to: '/receive', label: 'Goods received', area: 'Buying', description: 'Record a delivery against an order and invoice.', permission: ['grn.post'], keywords: 'grn delivery invoice receiving' },
   { to: '/returns', label: 'Returns to suppliers', area: 'Buying', description: 'Send goods back and reduce what you owe.', permission: ['supplier.read'], keywords: 'prn return credit note' },
@@ -74,7 +76,7 @@ export const MAIN: { label: string; paths: string[] }[] = [
   { label: 'Buying', paths: ['/suppliers', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'] },
   { label: 'Stock', paths: ['/stock', '/ledger', '/count', '/opening-stock', '/transfers'] },
   { label: 'Reports', paths: ['/profit', '/sales', '/items', '/reports'] },
-  { label: 'Customers', paths: ['/customers', '/debtors'] },
+  { label: 'Customers', paths: ['/customers', '/debtors', '/customers/import'] },
   { label: 'Exceptions', paths: ['/exceptions', '/audit'] },
   { label: 'Items', paths: ['/products', '/prices', '/products/import'] },
 ];
