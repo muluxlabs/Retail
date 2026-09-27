@@ -10,7 +10,7 @@ Cash is handled like stock: every dollar that moves is a record, so the cash a t
 
 | To… | Button | Who |
 |---|---|---|
-| Add a till, safe or bank account (with its opening cash) | **Create custody point** | Supervisor, manager |
+| Add a till, safe or bank account (with its opening cash) | **Add custody point** | Supervisor, manager |
 | Move cash: **float issue** (safe → till), **float return** (till → safe), **bank deposit** (safe → bank) | **Move cash** | Supervisor, manager |
 | Count the cash somewhere | **Blind count** | Cashier and up |
 

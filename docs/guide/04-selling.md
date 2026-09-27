@@ -60,6 +60,12 @@ The **Complete sale** button lights up when the payment covers the total. Anythi
 
 **Take a payment on account** (top of the Sell screen) records money a customer brings in towards what they owe: choose the customer, the amount and how they paid; cash goes into the till you choose. They get a numbered payment receipt (RCP-…).
 
+## On a tablet or phone
+
+The till works on a tablet or phone too — handy for a pop-up counter or a busy day. The basket and the payment stack one above the other.
+
+![The till on a phone](images/phone-sell.jpg)
+
 ## Good habits at the till
 
 - Scan, don't type, wherever there is a barcode.

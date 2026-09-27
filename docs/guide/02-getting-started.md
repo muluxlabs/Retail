@@ -23,6 +23,8 @@ The system shows **only the screens your job needs**. A cashier sees *Sell* and 
 
 **Search.** Start typing in that panel — *price list*, *Z report*, *debtors*, *shift*, *who changed* — and the matching screens appear. **↑ ↓** to choose, **Enter** to open.
 
+![Searching for a screen](images/launcher-search.jpg)
+
 **Across the top or down the side.** At the bottom of the panel, choose **Menu: Across the top** or **Down the side**. *Down the side* keeps every screen, grouped by area, in a bar on the left — handy on a large screen or if you move around a lot. The choice is remembered on that computer.
 
 ![The menu down the side](images/side-menu.jpg)

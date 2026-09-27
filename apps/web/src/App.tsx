@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+
+import { Launcher, LauncherButton, SideBar, TopBar, useLauncherShortcut, useMyScreens, useNavLayout } from './components/Navigation.js';
 
 import { useAuth } from './lib/auth.js';
 import { Spinner } from './lib/ui.js';
@@ -38,75 +40,45 @@ import { UserAccessPage } from './pages/UserAccess.js';
 import { Audit } from './pages/Audit.js';
 import { Users } from './pages/Users.js';
 
+// The guide is its own bundle: the till never loads it.
+const Docs = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Docs })));
+
 /**
- * Navigation is filtered by capability, so a cashier does not see a Stock tab
- * that would only 403. This is presentation: the API refuses on its own
- * authority regardless of what is rendered here.
- *
- * Sell and Receive lead, ahead of the read-only screens: they are what most
- * people who sign in actually do every day, and the exception queue exists
- * to catch what these two get wrong.
+ * Navigation is filtered by capability, so nobody sees a screen that would only
+ * refuse them. This is presentation: the API refuses on its own authority
+ * regardless of what is rendered here. The list of screens lives in
+ * lib/screens.ts; components/Navigation.tsx draws the top bar, the all-screens
+ * panel and the side bar from it.
  */
-const REPORT_PATHS = ['/profit', '/items', '/sales', '/reports'];
-const CUSTOMER_PATHS = ['/customers', '/debtors'];
-const CASH_PATHS = ['/cash', '/shifts', '/day-close'];
-const STOCK_ENTRY_PATHS = ['/count', '/opening-stock'];
-const BUYING_PATHS = ['/suppliers', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'];
-
-/** A path is inside a group when it is the group's path or below it (/orders/new is inside /orders). */
-const inGroup = (group: string[] | undefined, pathname: string): boolean =>
-  group?.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ?? false;
-
-const NAV: { to: string; label: string; end?: boolean; permission: string | string[]; group?: string[] }[] = [
-  { to: '/', label: 'Overview', end: true, permission: 'dashboard.read' },
-  { to: '/sell', label: 'Sell', permission: 'movement.post' },
-  // One tab for everything to do with suppliers; the screens inside are switched by the BuyingTabs bar.
-  { to: '/suppliers', label: 'Buying', permission: ['supplier.read', 'grn.post'], group: BUYING_PATHS },
-  // Stock take and opening stock share one tab; the StockEntryTabs bar switches between them.
-  { to: '/count', label: 'Stock entry', permission: ['stock.adjust', 'stock.opening'], group: STOCK_ENTRY_PATHS },
-  { to: '/customers', label: 'Customers', permission: 'customer.read', group: CUSTOMER_PATHS },
-  { to: '/transfers', label: 'Transfers', permission: 'transfer.read' },
-  // A cashier holds only cash.count, finance/auditor only cash.read - no
-  // single permission covers everyone who should see this tab, so it takes
-  // any-of. The page itself still decides what each of them can actually do.
-  { to: '/cash', label: 'Cash', permission: ['cash.read', 'cash.count', 'cash.move', 'day.close', 'shift.manage'], group: CASH_PATHS },
-  { to: '/exceptions', label: 'Exceptions', permission: ['exception.read', 'audit.read'], group: ['/exceptions', '/audit'] },
-  { to: '/stock', label: 'Stock on hand', permission: 'stock.read' },
-  // One tab for every report; the screens inside are switched by the ReportTabs bar.
-  { to: '/reports', label: 'Reports', permission: ['sale.read', 'stock.read'], group: REPORT_PATHS },
-  { to: '/products', label: 'Item master', permission: 'product.read' },
-  { to: '/prices', label: 'Prices', permission: 'price.write' },
-  { to: '/ledger', label: 'Stock ledger', permission: 'stock.read' },
-  { to: '/users', label: 'Staff', permission: 'user.read' },
-  { to: '/branches', label: 'Branches', permission: 'branch.manage' },
-  { to: '/settings', label: 'Settings', permission: 'settings.manage' },
-];
-
-/** Reports opens on sales and profit for anyone who may see sales, otherwise on stock movement. */
-function navTarget(item: { to: string; group?: string[] }, can: (p: string) => boolean): string {
-  if (item.group === undefined) return item.to;
-  if (item.to === '/suppliers') return can('supplier.read') ? '/suppliers' : '/receive';
-  if (item.to === '/cash') return can('cash.read') || can('cash.count') || can('cash.move') ? '/cash' : can('shift.manage') ? '/shifts' : '/day-close';
-  if (item.to === '/count') return can('stock.adjust') ? '/count' : '/opening-stock';
-  if (item.to === '/reports') return can('sale.read') ? '/profit' : item.to;
-  if (item.to === '/exceptions') return can('exception.read') ? '/exceptions' : '/audit';
-  return item.to;
-}
-
 function canAny(can: (p: string) => boolean, permission: string | string[]): boolean {
   return Array.isArray(permission) ? permission.some(can) : can(permission);
 }
 
 export function App() {
-  const { user, loading, can } = useAuth();
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const { user, loading, can, signOut } = useAuth();
   const location = useLocation();
+  const screens = useMyScreens();
+  const [layout, setLayout] = useNavLayout();
+  const [launcher, setLauncher] = useState(false);
+  useLauncherShortcut(useCallback(() => setLauncher(true), []));
 
-  // Belt-and-braces: NavLink's onClick already closes it, but a browser
-  // back/forward navigation does not fire that handler.
-  useEffect(() => {
-    setMobileNavOpen(false);
-  }, [location.pathname]);
+  // The guide is public: prospects and partners read it without an account.
+  if (location.pathname === '/documentation') return <Navigate to="/docs" replace />;
+  if (location.pathname === '/docs' || location.pathname.startsWith('/docs/')) {
+    return (
+      <Suspense
+        fallback={
+          <div className="grid h-full place-items-center">
+            <Spinner />
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/docs/:slug?" element={<Docs />} />
+        </Routes>
+      </Suspense>
+    );
+  }
 
   if (loading) {
     return (
@@ -122,96 +94,51 @@ export function App() {
   // too; this is the matching wall in the UI rather than a suggestion.
   if (user.mustChangePassword) return <ChangePassword />;
 
-  const visible = NAV.filter((item) => canAny(can, item.permission));
   // Land people on the first screen they are actually allowed to see.
-  const home = visible[0]?.to ?? '/products';
+  const home = screens.find((x) => x.to !== '/docs')?.to ?? '/products';
+  const side = layout === 'side';
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="border-ink-200/80 sticky top-0 z-20 border-b bg-white/85 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-3 px-4 sm:gap-6 sm:px-5">
-          <div className="flex shrink-0 items-center gap-2.5">
+    <div className="flex min-h-full flex-col">
+      <header className="border-ink-200/80 sticky top-0 z-30 border-b bg-white/85 backdrop-blur-sm">
+        <div className={`mx-auto flex h-14 items-center gap-3 px-4 sm:gap-5 sm:px-5 ${side ? '' : 'max-w-[1500px]'}`}>
+          <a href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Home">
             <div className="bg-accent-600 grid size-7 shrink-0 place-items-center rounded-md">
               <svg viewBox="0 0 24 24" className="size-4 text-white" aria-hidden="true">
                 <path fill="currentColor" d="M4 7h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm12-4h4v2h-4z" />
               </svg>
             </div>
-            <div className="leading-none max-sm:block xl:max-2xl:hidden">
+            <div className="leading-none">
               <div className="text-[13px] font-semibold tracking-tight whitespace-nowrap">Retail Operations</div>
-              <div className="text-ink-400 mt-0.5 hidden text-[10.5px] whitespace-nowrap 2xl:block">
-                Multi-branch control
-              </div>
+              <div className="text-ink-400 mt-0.5 hidden text-[10.5px] whitespace-nowrap 2xl:block">Multi-branch control</div>
             </div>
-          </div>
+          </a>
 
-          {/* Full horizontal nav from xl (1280px) up. An administrator has 14
-              tabs (~880px of them), and at 1024px the whole header needs about
-              1350px - so below xl they live in the menu instead, rather than
-              being clipped mid-word. overflow-x-auto stays as a last resort. */}
-          <nav className="hidden min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto xl:flex">
-            {visible.map((item) => (
-              <NavLink
-                key={item.to}
-                to={navTarget(item, can)}
-                end={item.end ?? false}
-                className={({ isActive }) =>
-                  `shrink-0 rounded-lg px-2 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition xl:px-1.5 2xl:px-2.5 ${
-                    isActive || inGroup(item.group, location.pathname)
-                      ? 'bg-ink-100 text-ink-900'
-                      : 'text-ink-500 hover:text-ink-800 hover:bg-ink-50'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          {!side && <TopBar screens={screens} max={9} />}
 
-          <div className="ml-auto flex items-center gap-1">
-            <UserMenu />
+          <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => setMobileNavOpen((v) => !v)}
-              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-              aria-expanded={mobileNavOpen}
-              className="text-ink-500 hover:bg-ink-100 -mr-1 grid size-9 shrink-0 place-items-center rounded-lg xl:hidden"
+              onClick={() => setLauncher(true)}
+              className="border-ink-200 text-ink-400 hover:text-ink-700 hover:border-ink-300 hidden items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-[12.5px] md:flex"
+              aria-label="Find a screen"
             >
-              <svg viewBox="0 0 20 20" className="size-5" aria-hidden="true">
-                {mobileNavOpen ? (
-                  <path
-                    fill="currentColor"
-                    d="M5.6 4.2 10 8.6l4.4-4.4 1.4 1.4L11.4 10l4.4 4.4-1.4 1.4L10 11.4l-4.4 4.4-1.4-1.4L8.6 10 4.2 5.6z"
-                  />
-                ) : (
-                  <path fill="currentColor" d="M3 5h14v1.6H3zm0 6.7h14v1.6H3z" />
-                )}
+              <svg viewBox="0 0 20 20" className="size-4" aria-hidden="true">
+                <path fill="currentColor" d="M8.5 3a5.5 5.5 0 0 1 4.4 8.8l3.7 3.7-1.1 1.1-3.7-3.7A5.5 5.5 0 1 1 8.5 3zm0 1.6a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8z" />
               </svg>
+              Search
+              <kbd className="border-ink-200 rounded border px-1 text-[10.5px]">Ctrl K</kbd>
             </button>
+            <LauncherButton onClick={() => setLauncher(true)} />
+            <UserMenu />
           </div>
         </div>
-
-        {mobileNavOpen && (
-          <nav className="border-ink-200/80 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-t bg-white xl:hidden">
-            {visible.map((item) => (
-              <NavLink
-                key={item.to}
-                to={navTarget(item, can)}
-                end={item.end ?? false}
-                onClick={() => setMobileNavOpen(false)}
-                className={({ isActive }) =>
-                  `border-ink-100 block border-b px-5 py-3 text-[13.5px] font-medium ${
-                    isActive || inGroup(item.group, location.pathname) ? 'bg-ink-100 text-ink-900' : 'text-ink-600'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            <MobileSignOut />
-          </nav>
-        )}
       </header>
 
-      <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-5 sm:px-5 sm:py-6">
+      <Launcher open={launcher} onClose={() => setLauncher(false)} screens={screens} layout={layout} onLayout={setLayout} onSignOut={() => void signOut()} />
+
+      <div className="flex flex-1">
+        {side && <SideBar screens={screens} />}
+      <main className={`mx-auto w-full min-w-0 flex-1 px-4 py-5 sm:px-5 sm:py-6 ${side ? 'max-w-[1400px]' : 'max-w-[1500px]'}`}>
         <Routes>
           <Route path="/" element={can('dashboard.read') ? <Dashboard /> : <Navigate to={home} replace />} />
           <Route path="/sell" element={<Guard permission="movement.post" home={home}><Sell /></Guard>} />
@@ -267,6 +194,7 @@ export function App() {
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </main>
+      </div>
     </div>
   );
 }
@@ -298,7 +226,7 @@ function UserMenu() {
 
   return (
     <div className="flex items-center gap-2.5">
-      <div className="hidden text-right whitespace-nowrap sm:block xl:hidden 2xl:block">
+      <div className="hidden text-right whitespace-nowrap 2xl:block">
         <div className="text-[12px] font-medium leading-tight">{user.fullName}</div>
         <div className="text-ink-400 text-[10.5px] leading-tight">
           {user.roles.map((r) => r.replace(/_/g, ' ')).join(', ')}
@@ -307,28 +235,13 @@ function UserMenu() {
       <div className="bg-ink-200 text-ink-700 grid size-7 shrink-0 place-items-center rounded-full text-[10.5px] font-semibold">
         {initials}
       </div>
-      {/* Below xl, this lives in the mobile nav panel instead (MobileSignOut) -
-          there is not room for it here alongside the hamburger button too. */}
+      {/* On smaller screens, Sign out is at the foot of the all-screens panel. */}
       <button
         onClick={() => void signOut()}
-        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 hidden rounded-lg px-2 py-1.5 text-[12px] font-medium whitespace-nowrap transition xl:inline-flex"
+        className="text-ink-400 hover:text-ink-800 hover:bg-ink-100 hidden rounded-lg px-2 py-1.5 text-[12px] font-medium whitespace-nowrap transition lg:inline-flex"
       >
         Sign out
       </button>
     </div>
-  );
-}
-
-function MobileSignOut() {
-  const { user, signOut } = useAuth();
-  if (user === null) return null;
-
-  return (
-    <button
-      onClick={() => void signOut()}
-      className="text-ink-600 block w-full px-5 py-3 text-left text-[13.5px] font-medium"
-    >
-      Sign out
-    </button>
   );
 }

@@ -22,6 +22,8 @@ Open a supplier for their **account statement**: every delivery, payment and ret
 
 An order moves through: **Ordered → Part received → Received**, or **Closed short** (the rest will not come) or **Cancelled**. It also shows whether it is **Unpaid / Part paid / Paid**.
 
+![Purchase orders](images/orders.jpg)
+
 ![A purchase order](images/order-detail.jpg)
 
 ## Goods received
@@ -31,6 +33,8 @@ An order moves through: **Ordered → Part received → Received**, or **Closed 
 - If the supplier has a price list on record, their list price shows beside each line as a hint — but the cost recorded is always the invoice's.
 - If the lines do not add up to the invoice total, the screen warns you before posting.
 - Posting creates a numbered **goods received note** (GRN), puts the stock on the books at the branch, and updates the item's average cost.
+
+![Recording a delivery](images/goods-received.jpg)
 
 ![A goods received note](images/goods-received-note.jpg)
 
@@ -55,6 +59,8 @@ When a supplier sends new prices, **Buying › Price lists › Import a price li
 4. **Tick the lines to apply** and **Apply**. A price below its new cost is refused.
 
 ![Previewing a supplier's price list](images/price-list-preview.jpg)
+
+![Supplier price lists](images/price-lists.jpg)
 
 The result is a numbered, unchangeable **price list** (SPL-…) recording, for each item, the old and new cost and price. The supplier's costs are remembered: their own codes match the next list automatically, and their prices fill in new orders. Every price change is audited with the list it came from.
 
