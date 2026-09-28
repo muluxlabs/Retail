@@ -24,6 +24,7 @@ import { StockEntryTabs } from '../components/StockEntryTabs.js';
 import { api, ApiError, type Branch } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { useMyBranches } from '../lib/myBranches.js';
+import { parseCountText } from '../lib/countText.js';
 import { COUNT_TEMPLATE_COLUMNS, findColumn, readSpreadsheet, writeTemplate } from '../lib/spreadsheet.js';
 import { Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
@@ -47,7 +48,7 @@ export function Count() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CountResult | null>(null);
-  const [uploadReport, setUploadReport] = useState<{ filled: number; notFound: string[]; bad: string[] } | null>(null);
+  const [uploadReport, setUploadReport] = useState<{ filled: number; notFound: string[]; bad: string[]; packs: string[] } | null>(null);
 
   const branches = useMyBranches();
   const stock = useAsync(
@@ -98,7 +99,11 @@ export function Count() {
       fileName: `count-sheet-${branchName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       sheet: 'Count',
       columns: COUNT_TEMPLATE_COLUMNS,
-      notes: ['Fill in Counted for what you counted. Leave a line blank if you did not count it: blank is not zero.', 'Add rows at the bottom for items not listed (SKU or barcode, and the count).'],
+      notes: [
+        'Fill in Counted for what you counted. Leave a line blank if you did not count it: blank is not zero.',
+        'Add rows at the bottom for items not listed. With a SKU, count in the item’s base unit; with a pack’s barcode, count packs (5 cases of 24 = 120).',
+        'The same item on several rows adds up (loose singles on one row, full cases on another).',
+      ],
       rows: rows.map((r) => [r.sku, r.productName, r.baseUom, '']),
     });
   }
@@ -115,43 +120,56 @@ export function Count() {
         return;
       }
       const bySku = new Map(rows.map((r) => [r.sku.toLowerCase(), r.productId]));
-      const updates = new Map<string, string>();
+      // Base units counted per item. The same item on several rows adds up (loose singles plus full cases).
+      const totals = new Map<string, number>();
+      const add = (productId: string, base: number) => totals.set(productId, (totals.get(productId) ?? 0) + base);
       const added: Row[] = [];
       const notFound: string[] = [];
       const bad: string[] = [];
+      const packs: string[] = [];
       for (const [i, r] of sh.rows.entries()) {
         const code = (r[codeCol] ?? '').trim();
-        const counted = (r[countCol] ?? '').trim().replace(',', '.');
-        if (code === '' || counted === '') continue; // not counted stays not counted
-        if (!/^\d+(\.\d+)?$/.test(counted)) {
-          bad.push(`Row ${i + 2}: "${counted}" for ${code} is not a number`);
+        const text = (r[countCol] ?? '').trim();
+        if (code === '' || text === '') continue; // not counted stays not counted
+        const n = parseCountText(text);
+        if (!n.ok) {
+          bad.push(`Row ${i + 2} (${code}): ${n.reason}`);
           continue;
         }
+        // A SKU: counted in the item's base unit.
         const known = bySku.get(code.toLowerCase()) ?? added.find((a) => a.sku.toLowerCase() === code.toLowerCase())?.productId;
         if (known !== undefined) {
-          updates.set(known, counted);
+          add(known, n.value);
           continue;
         }
-        // Not on the list: an item with no history here yet, by barcode or SKU.
+        // A barcode: counted in packs of the pack it is printed on - 5 of a case of 24 is 120.
         try {
           const hit = await api.resolveBarcode(code);
-          added.push({ productId: hit.productId, productName: hit.productName, sku: hit.sku, book: 0, baseUom: '', counted });
+          const base = n.value * Number(hit.qtyBase);
+          if (Number(hit.qtyBase) !== 1) packs.push(`${hit.productName}: ${n.value} × ${hit.packLabel} = ${base}`);
+          if (!bySku.has(hit.sku.toLowerCase()) && !added.some((a) => a.productId === hit.productId)) {
+            added.push({ productId: hit.productId, productName: hit.productName, sku: hit.sku, book: 0, baseUom: '', counted: '' });
+          }
+          add(hit.productId, base);
           continue;
         } catch {
-          /* not a barcode: try it as a SKU */
+          /* not a barcode: try it as a SKU of an item not on the list */
         }
         const found = (await api.products({ search: code, limit: 5 })).items.find((p) => p.sku.toLowerCase() === code.toLowerCase());
-        if (found !== undefined) added.push({ productId: found.id, productName: found.name, sku: found.sku, book: 0, baseUom: found.baseUom, counted });
-        else notFound.push(code);
+        if (found === undefined) {
+          notFound.push(code);
+          continue;
+        }
+        added.push({ productId: found.id, productName: found.name, sku: found.sku, book: 0, baseUom: found.baseUom, counted: '' });
+        add(found.id, n.value);
       }
-      // Counts for items already listed are filled in; items found by code but not listed are added on top.
-      for (const a of added) updates.set(a.productId, a.counted);
+      const shown = (v: number) => String(Math.round(v * 10_000) / 10_000);
       setRows((rs) => {
         const listed = new Set(rs.map((r) => r.productId));
         const fresh = added.filter((a) => !listed.has(a.productId));
-        return [...fresh, ...rs.map((r) => (updates.has(r.productId) ? { ...r, counted: updates.get(r.productId)! } : r))];
+        return [...fresh, ...rs].map((r) => (totals.has(r.productId) ? { ...r, counted: shown(totals.get(r.productId)!) } : r));
       });
-      setUploadReport({ filled: updates.size, notFound, bad });
+      setUploadReport({ filled: totals.size, notFound, bad, packs });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -278,7 +296,10 @@ export function Count() {
             <div className="border-accent-300/60 bg-accent-50 rounded-lg border px-3 py-2 text-[12.5px]" data-testid="count-upload-report">
               <b>{uploadReport.filled}</b> count{uploadReport.filled === 1 ? '' : 's'} filled in from the file — check them below, then post.
               {uploadReport.notFound.length > 0 && <div className="text-amber-800">Not found: {uploadReport.notFound.slice(0, 20).join(', ')}{uploadReport.notFound.length > 20 && ` and ${uploadReport.notFound.length - 20} more`}</div>}
-              {uploadReport.bad.length > 0 && <div className="text-red-700">{uploadReport.bad.slice(0, 10).join('; ')}</div>}
+              {uploadReport.packs.length > 0 && (
+                <div className="text-ink-600">Counted by pack barcode: {uploadReport.packs.slice(0, 8).join('; ')}{uploadReport.packs.length > 8 && ` and ${uploadReport.packs.length - 8} more`}.</div>
+              )}
+              {uploadReport.bad.length > 0 && <div className="text-red-700">Left out — {uploadReport.bad.slice(0, 10).join('; ')}</div>}
             </div>
           )}
 

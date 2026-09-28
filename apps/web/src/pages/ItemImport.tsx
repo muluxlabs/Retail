@@ -501,7 +501,9 @@ export function ItemImport() {
       {done !== null && (
         <div className="border-accent-300/60 bg-accent-50 rounded-xl border px-4 py-3 text-[13px]" data-testid="import-done">
           <div className="font-semibold">
-            Imported as <span className="font-mono">{done.importNo}</span>
+            {done.replayed ? 'This import was already done, as ' : 'Imported as '}
+            <span className="font-mono">{done.importNo}</span>
+            {done.replayed && <span className="font-normal"> — saved the first time (the reply was lost on the way back). Nothing was added twice.</span>}
           </div>
           <div className="text-ink-700 mt-0.5">
             {plural(done.itemsCreated, 'item')} and {plural(done.packsCreated, 'pack')} created

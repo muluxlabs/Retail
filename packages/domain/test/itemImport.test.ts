@@ -101,6 +101,26 @@ describe('reading an item spreadsheet', () => {
     expect(r.problems[0]!.message).toContain('Item name');
   });
 
+  it('refuses numbers too large to be real, by row and column (a value in the wrong column)', () => {
+    const r = parseItemRows(
+      [
+        row({ 'Item name': 'A', Pack: 'single', 'Units in pack': '6001234567890' }),
+        row({ 'Item name': 'B', Pack: 'single', 'Units in pack': '1', 'Selling price': '6001234567890' }),
+        row({ 'Item name': 'C', Pack: 'single', 'Units in pack': '1', 'Cost price': '99999999999' }),
+        row({ 'Item name': 'D', Pack: 'single', 'Units in pack': '1', 'Stock on hand': '6001234567890' }),
+        row({ 'Item name': 'E', Pack: 'case', 'Units in pack': '100000', 'Selling price': '10000000', 'Stock on hand': '10000000' }),
+      ],
+      H,
+    );
+    expect(r.problems.map((p) => [p.row, p.column])).toEqual([
+      [2, 'Units in pack'],
+      [3, 'Selling price'],
+      [4, 'Cost price'],
+      [5, 'Stock on hand'],
+    ]);
+    expect(r.items.map((i) => i.name)).toEqual(['E']);
+  });
+
   it('knows barcode types', () => {
     expect(barcodeType('6001234567890')).toBe('ean13');
     expect(barcodeType('60012345')).toBe('ean8');

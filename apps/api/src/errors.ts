@@ -125,6 +125,11 @@ function translatePostgres(error: { code?: string; message?: string }): {
         status: 409,
         body: { error: { code: 'DUPLICATE', message: 'That record already exists.' } },
       };
+    case '22003': // numeric_value_out_of_range
+      return {
+        status: 422,
+        body: { error: { code: 'NUMBER_TOO_LARGE', message: 'A number is too large to store. Check for a value in the wrong column.' } },
+      };
     case '23503': // foreign_key_violation
       return {
         status: 422,

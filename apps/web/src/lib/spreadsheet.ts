@@ -184,7 +184,7 @@ export const COUNT_TEMPLATE_COLUMNS: TemplateColumn[] = [
   { heading: 'SKU', required: true, help: 'The item’s SKU (or a barcode).', examples: [] },
   { heading: 'Item name', required: false, help: 'For your reference only.', examples: [] },
   { heading: 'Unit', required: false, help: 'What the count is in: the item’s base unit (each, kg…).', examples: [] },
-  { heading: 'Counted', required: true, help: 'What is physically on the shelf, in that unit. Leave blank if not counted — blank is not zero.', examples: [] },
+  { heading: 'Counted', required: true, help: 'What is physically on the shelf: in the base unit for a SKU, in packs for a pack’s barcode (5 cases of 24 = 120). Use a dot for decimals. Leave blank if not counted — blank is not zero.', examples: [] },
 ];
 
 /** Any template as an Excel file: the data sheet, and a sheet explaining each column. */

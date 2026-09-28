@@ -12,6 +12,9 @@
 
 import { DomainError } from './errors.js';
 
+/** Upper bounds, well inside what the database can store, so a number in the wrong column is caught by row. */
+export const IMPORT_LIMITS = { price: 10_000_000, cost: 10_000_000, unitsInPack: 100_000, stock: 10_000_000 };
+
 export class InvalidItemImport extends DomainError {
   constructor(message: string) {
     super('INVALID_ITEM_IMPORT', message);
@@ -196,14 +199,18 @@ export function parseItemRows(rows: Record<string, string>[], headings: string[]
     if (sku.length > 64) err('sku', 'The SKU is longer than 64 characters.');
     if (packLabel === '') err('pack', 'Say what the pack is (e.g. single, bale of 10).');
     if (!Number.isFinite(qty) || qty <= 0) err('qtyBase', `"${qtyText}" is not a number of units above zero.`);
+    else if (qty > IMPORT_LIMITS.unitsInPack) err('qtyBase', `${qtyText} units in one pack is more than ${IMPORT_LIMITS.unitsInPack.toLocaleString('en')}. Is it in the right column?`);
     if (barcode !== '' && (barcode.length > 32 || /^-/.test(barcode))) err('barcode', 'That is not a barcode.');
     if (barcode !== '' && /e\+/i.test(barcode)) err('barcode', 'The barcode was turned into a number by Excel (like 6.0E+12). Format the column as Text and type it again.');
     if (price === 'bad') err('sellPrice', `"${get(r, 'sellPrice')}" is not a price (up to two decimals).`);
+    else if (price !== null && price > IMPORT_LIMITS.price) err('sellPrice', `${get(r, 'sellPrice')} is more than ${IMPORT_LIMITS.price.toLocaleString('en')}. Is it in the right column?`);
     if (weighed === 'bad') err('isWeighed', 'Answer yes or no.');
     if (dSell === 'bad') err('isDefaultSell', 'Answer yes or no.');
     if (dBuy === 'bad') err('isDefaultBuy', 'Answer yes or no.');
     if (costV === 'bad') err('cost', `"${get(r, 'cost')}" is not a cost (up to four decimals).`);
+    else if (costV !== null && costV > IMPORT_LIMITS.cost) err('cost', `${get(r, 'cost')} is more than ${IMPORT_LIMITS.cost.toLocaleString('en')}. Is it in the right column?`);
     if (stockV !== null && (!Number.isFinite(stockV) || stockV < 0)) err('stock', `"${get(r, 'stock')}" is not a quantity of zero or more.`);
+    else if (stockV !== null && stockV > IMPORT_LIMITS.stock) err('stock', `${get(r, 'stock')} on hand is more than ${IMPORT_LIMITS.stock.toLocaleString('en')}. Is it in the right column?`);
     if (barcode !== '') {
       const first = barcodes.get(barcode);
       if (first !== undefined) err('barcode', `The same barcode as row ${first}: a barcode belongs to one pack only.`);

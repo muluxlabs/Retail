@@ -322,6 +322,17 @@ export function RecordImport({ kind }: { kind: 'customers' | 'suppliers' }) {
           </div>
         </Card>
       )}
+      {done !== null && done.report === null && (
+        <Card className="px-4 py-3 text-[13px]" data-testid="record-replayed">
+          <div className="font-semibold">This import was already done.</div>
+          <div className="text-ink-600 mt-0.5">
+            It was saved the first time you pressed Import (the reply was lost on the way back): {plural(done.created, k.noun, k.nouns)} created
+            {done.existing > 0 && `, ${plural(done.existing, 'row')} already on file`}
+            {done.similarSkipped > 0 && `, ${plural(done.similarSkipped, 'look-alike')} left out`}
+            {done.problemRows > 0 && `, ${plural(done.problemRows, 'row')} with problems`}. Nothing was added twice.
+          </div>
+        </Card>
+      )}
       {done !== null && (
         <Link to={k.back.to} className="text-accent-700 inline-block text-[13px] font-medium hover:underline">
           Back to {k.back.label.toLowerCase()}

@@ -36,6 +36,18 @@ describe('customer rows', () => {
     ]);
   });
 
+  it('refuses a credit limit too large to be real (a number in the wrong column), by row', () => {
+    const r = parseCustomerRows(
+      [
+        { Name: 'Big Spender', Phone: '', 'Credit limit': '630123456789', 'Days to pay': '' },
+        { Name: 'Normal Shop', Phone: '', 'Credit limit': '100000000', 'Days to pay': '' },
+      ],
+      H,
+    );
+    expect(r.records.map((x) => x.name)).toEqual(['Normal Shop']);
+    expect(r.problems).toEqual([{ row: 2, column: 'Credit limit', message: expect.stringContaining('right column') }]);
+  });
+
   it('understands other headings, and says which are missing', () => {
     const r = parseCustomerRows([{ 'Customer Name': 'Tendai', Mobile: '0773 000 111' }], ['Customer Name', 'Mobile']);
     expect(r.records[0]).toMatchObject({ name: 'Tendai', phone: '0773 000 111' });

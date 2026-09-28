@@ -58,6 +58,9 @@ export function phoneKey(phone: string, country = '263'): string {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** The largest credit limit accepted, as on the Add customer form. */
+export const MAX_CREDIT_LIMIT = 100_000_000;
+
 // ---- customers ---------------------------------------------------------------------------------------------------
 
 export type CustomerField = 'name' | 'phone' | 'email' | 'address' | 'idNumber' | 'creditLimit' | 'creditDays' | 'notes';
@@ -108,6 +111,7 @@ export function parseCustomerRows(rows: Record<string, string>[], headings: stri
     if (phone !== '' && (pk === null || pk.length < 7 || pk.length > 15)) err('phone', `"${phone}" is not a phone number.`);
     if (email !== '' && !EMAIL.test(email)) err('email', `"${email}" is not an email address.`);
     if (limit === 'bad') err('creditLimit', `"${get(r, 'creditLimit')}" is not an amount (up to two decimals).`);
+    else if (limit !== null && limit > MAX_CREDIT_LIMIT) err('creditLimit', `${get(r, 'creditLimit')} is more than the largest credit limit allowed (${MAX_CREDIT_LIMIT.toLocaleString('en')}). Is it in the right column?`);
     if (days === 'bad') err('creditDays', `"${get(r, 'creditDays')}" is not a number of days from 0 to 365.`);
     if (pk !== null && bad.length === 0) {
       const first = phones.get(pk);
