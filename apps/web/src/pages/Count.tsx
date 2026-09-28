@@ -190,7 +190,6 @@ export function Count() {
     try {
       const res = await api.postCount({
         branchId,
-        actorId: user.personId,
         lines: entered.map((r) => ({ productId: r.productId, countedBase: Number(r.counted) })),
       });
       setResult(res);

@@ -324,7 +324,7 @@ export function Sell() {
     if (notFound === null || user === null) return;
     setBusy(true);
     try {
-      await api.logUnlistedScan({ code: notFound, branchId, actorId: user.personId });
+      await api.logUnlistedScan({ code: notFound, branchId });
       setLoggedScan(true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));

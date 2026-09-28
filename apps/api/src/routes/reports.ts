@@ -21,6 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
+import { assertInScope, scopedBranchIds } from '../scope.js';
 import { parseQuery } from '../validation.js';
 
 const GROUP_BY_EXPR = {
@@ -76,6 +77,8 @@ function aggregates() {
 export async function registerReportRoutes(app: FastifyInstance): Promise<void> {
   app.get('/reports/movements', { onRequest: [app.requirePermission('stock.read')] }, async (request) => {
     const q = parseQuery(reportQuery, request.query);
+    if (q.branchId !== undefined) assertInScope(request, q.branchId);
+    const limitTo = scopedBranchIds(request);
 
     // `to` is a calendar day, inclusive - the till day it names is meant to
     // be in range, not excluded by a bare `< to` at midnight.
@@ -87,6 +90,7 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       .where('occurred_at', '>=', q.from)
       .where('occurred_at', '<', toExclusive)
       .$if(q.branchId !== undefined, (qb) => qb.where('branch_id', '=', q.branchId as string))
+      .$if(limitTo !== null, (qb) => qb.where('branch_id', 'in', limitTo as string[]))
       .$if(q.productId !== undefined, (qb) => qb.where('product_id', '=', q.productId as string))
       .$if(q.categoryId !== undefined, (qb) =>
         qb.where('product_id', 'in', (eb) =>

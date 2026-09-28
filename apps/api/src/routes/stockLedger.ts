@@ -30,6 +30,7 @@ import { z } from 'zod';
 import type { Database } from '@retail-ops/db';
 import type { Kysely } from 'kysely';
 
+import { assertInScope } from '../scope.js';
 import { businessTimezone } from '../services/purchasing.js';
 import { parseQuery } from '../validation.js';
 
@@ -119,6 +120,7 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
    */
   app.get('/stock-ledger', { onRequest: [app.requirePermission('stock.read')] }, async (request, reply) => {
     const q = parseQuery(binCardQuery, request.query);
+    assertInScope(request, q.branchId);
     const { start, fromDay, toDay, toExclusive, reachesToday } = await resolvePeriod(app.db, q.from, q.to);
 
     const [branch, product] = await Promise.all([
@@ -203,6 +205,7 @@ export async function registerStockLedgerRoutes(app: FastifyInstance): Promise<v
     { onRequest: [app.requirePermission('stock.read')] },
     async (request, reply) => {
       const q = parseQuery(reconciliationQuery, request.query);
+      assertInScope(request, q.branchId);
       const { start, fromDay, toDay, toExclusive, reachesToday } = await resolvePeriod(app.db, q.from, q.to);
 
       const branch = await app.db

@@ -51,7 +51,7 @@ Some events appear in both: raising a customer's credit limit is a change on rec
 
 ## The exception queue
 
-**Exceptions › Exception queue** lists everything unusual that needs a person to look at it: what happened, where, who did it, when, and what it is worth. Each stays open until someone with the permission **clears** it (with a note), or marks it **acknowledged** or **escalated**. Nothing in the queue can be deleted.
+**Exceptions › Exception queue** lists everything unusual that needs a person to look at it: what happened, where, who did it, when, and what it is worth. Each stays open until someone with the permission **clears** it (with a note), or marks it **acknowledged** or **escalated**. The clearing is recorded in the name of whoever is signed in, never a name picked from a list, and a branch's people see and clear only their own branch's items. Nothing in the queue can be deleted.
 
 ![The exception queue](images/exceptions.jpg)
 

@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { assertInScope } from '../scope.js';
 import { parseBody } from '../validation.js';
 import { logUnlistedScan, postCount, postMovement, resolveBarcode } from '../services/stock.js';
 
@@ -31,7 +32,8 @@ const movementBody = z.object({
   branchId: z.uuid(),
   qtyBase: z.number().refine((n) => n !== 0, 'A movement must carry a non-zero quantity'),
   reason: z.enum(REASONS),
-  actorId: z.uuid(),
+  /** Ignored: a movement is always recorded against the signed-in person. Accepted so older clients keep working. */
+  actorId: z.uuid().optional(),
   unitCost: z.number().nonnegative().nullable().default(null),
   docType: z.string().trim().max(32).nullable().default(null),
   docId: z.uuid().nullable().default(null),
@@ -54,13 +56,15 @@ const movementBody = z.object({
 const unlistedScanBody = z.object({
   code: z.string().trim().min(1).max(32),
   branchId: z.uuid(),
-  actorId: z.uuid(),
+  /** Ignored - the signed-in person. */
+  actorId: z.uuid().optional(),
   terminalId: z.uuid().nullable().default(null),
 });
 
 const countBody = z.object({
   branchId: z.uuid(),
-  actorId: z.uuid(),
+  /** Ignored - the signed-in person. */
+  actorId: z.uuid().optional(),
   docId: z.uuid().optional(),
   occurredAt: z.coerce.date().optional(),
   lines: z
@@ -100,7 +104,8 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
         error: { code: 'NOT_PERMITTED', message: 'Your role does not allow that action.', detail: { permission: needed } },
       });
     }
-    const result = await postMovement(app.db, body);
+    assertInScope(request, body.branchId);
+    const result = await postMovement(app.db, { ...body, actorId: request.user!.personId });
     // A replay is a success, but it is not a creation.
     return reply.status(result.replayed ? 200 : 201).send(result);
   });
@@ -117,7 +122,8 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    */
   app.post('/counts', { onRequest: [app.requirePermission('stock.adjust')] }, async (request, reply) => {
     const body = parseBody(countBody, request.body);
-    const result = await postCount(app.db, body);
+    assertInScope(request, body.branchId);
+    const result = await postCount(app.db, { ...body, actorId: request.user!.personId });
     const varianceLines = result.lines.filter((l) => l.variance !== 0);
     return reply.status(201).send({
       ...result,
@@ -158,7 +164,8 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
     { onRequest: [app.requirePermission('movement.post')] },
     async (request, reply) => {
       const body = parseBody(unlistedScanBody, request.body);
-      const result = await logUnlistedScan(app.db, body);
+      assertInScope(request, body.branchId);
+      const result = await logUnlistedScan(app.db, { ...body, actorId: request.user!.personId });
       return reply.status(201).send(result);
     },
   );

@@ -49,8 +49,13 @@ The code is one TypeScript repository (npm workspaces), type-checked end to end:
 
 - HTTPS only. Sessions are random tokens stored as hashes; the cookie is `httpOnly` and `SameSite=Lax`, `Secure` in production.
 - Passwords are hashed with scrypt; temporary passwords must be changed at first sign-in; eight failures lock an account for 15 minutes.
+- When sign-ins from one internet address fail against twenty different accounts within 15 minutes, that address is refused for a while, even with a right password. This stops one common password being tried against every account. One person mistyping their own password locks only their own account, never the whole branch. Each refusal is in the audit log.
 - Deactivating a person or resetting their password ends their sessions at once.
-- Branch scope is enforced on the server for every branch-specific read and write.
+- Branch scope is enforced on the server: cash, sales, stock movements and counts, the bin card, movement reports, exceptions, transfers (dispatch from, receive at), opening stock, day close and shifts. A person tied to a branch sees and changes only that branch's business, whatever the browser sends.
+- Everything is recorded against the person signed in. No request can name someone else as the one who posted a movement or cleared an exception.
+- The API accepts browser calls only from its own site (no cross-site requests with the user's cookie). Every page and reply is sent with headers that forbid framing and content sniffing, and API replies are never cached.
+- Staff phone numbers and emails are shown only on the Users screen, to those who may manage people.
+- Uploaded proof of payment is checked by its content (PNG, JPEG, WebP or PDF only, 3 MB) and served back sandboxed.
 - Nobody can change their own access; nobody can grant what they do not hold; the database refuses self-granted permissions.
 
 ## Quality
@@ -80,3 +85,4 @@ The full regression (20+ API suites, 15 browser suites) runs on a freshly built 
 - No fiscal-device (ZIMRA) integration yet — it needs the business's own tax credentials and device.
 - Receipts print through the browser; there is no direct ESC/POS or cash-drawer driver.
 - API access uses staff sessions; dedicated API keys and webhooks are not built yet.
+- The overview dashboard and the stock-on-hand list show all branches to anyone allowed to read them. Stock at other branches is visible on purpose, so a manager can see where to ask for a transfer.

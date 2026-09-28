@@ -15,6 +15,7 @@ import { useState } from 'react';
 
 import { ControlsTabs } from '../components/ControlsTabs.js';
 import { api, ApiError, type ExceptionRow, type ExceptionState, type Product } from '../lib/api.js';
+import { useAuth } from '../lib/auth.js';
 import {
   Badge,
   Button,
@@ -57,8 +58,6 @@ export function Exceptions() {
       }),
     [state, kind],
   );
-
-  const people = useAsync(() => api.people(), []);
 
   const items = query.data?.items ?? [];
   const selected = items.find((i) => i.id === selectedId) ?? items[0];
@@ -217,7 +216,6 @@ export function Exceptions() {
             <Detail
               key={selected.id}
               row={selected}
-              people={people.data ?? []}
               onDone={() => {
                 setSelectedId(null);
                 query.reload();
@@ -232,14 +230,13 @@ export function Exceptions() {
 
 function Detail({
   row,
-  people,
   onDone,
 }: {
   row: ExceptionRow;
-  people: { id: string; fullName: string }[];
   onDone: () => void;
 }) {
-  const [clearedBy, setClearedBy] = useState('');
+  // Cleared by whoever is signed in - the server records that, not a name picked from a list.
+  const { user } = useAuth();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -251,7 +248,7 @@ function Detail({
     setBusy(true);
     setError(null);
     try {
-      await api.clearException(row.id, { clearedBy, note });
+      await api.clearException(row.id, { note });
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -261,14 +258,10 @@ function Detail({
   }
 
   async function mark(state: 'acknowledged' | 'escalated') {
-    if (clearedBy === '') {
-      setError('Choose who is doing this first.');
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      await api.setExceptionState(row.id, { state, actorId: clearedBy });
+      await api.setExceptionState(row.id, { state });
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -349,19 +342,9 @@ function Detail({
             <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
               Cleared by
             </label>
-            <select
-              required
-              value={clearedBy}
-              onChange={(e) => setClearedBy(e.target.value)}
-              className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
-            >
-              <option value="">Select a person…</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.fullName}
-                </option>
-              ))}
-            </select>
+            <div className="text-ink-800 text-[12.5px]" data-testid="cleared-by">
+              {user?.fullName ?? '—'} <span className="text-ink-400">(you)</span>
+            </div>
           </div>
           <div>
             <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">

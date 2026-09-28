@@ -1700,7 +1700,6 @@ export const api = {
     branchId: string;
     qtyBase: number;
     reason: string;
-    actorId: string;
     unitCost?: number | null;
     docType?: string | null;
     occurredAt?: string;
@@ -1964,13 +1963,12 @@ export const api = {
     }),
 
   /** The scan itself becomes evidence: an unresolved barcode logged as a work item. */
-  logUnlistedScan: (body: { code: string; branchId: string; actorId: string }) =>
+  logUnlistedScan: (body: { code: string; branchId: string }) =>
     request<{ id: string }>('/api/scans/unlisted', { method: 'POST', body: JSON.stringify(body) }),
 
   /** Post a stock count. Posting is the point - an unposted count changes nothing. */
   postCount: (body: {
     branchId: string;
-    actorId: string;
     lines: { productId: string; countedBase: number }[];
   }) =>
     request<{
@@ -2062,14 +2060,14 @@ export const api = {
   exceptions: (params: { state?: string; kind?: string; branchId?: string; limit?: number } = {}) =>
     request<ExceptionList>(`/api/exceptions${qs(params)}`),
 
-  /** Clearing requires a named person and a note. The server enforces both. */
-  clearException: (id: string, body: { clearedBy: string; note: string }) =>
+  /** Clearing needs a note; it is recorded against whoever is signed in. */
+  clearException: (id: string, body: { note: string }) =>
     request<ExceptionRow>(`/api/exceptions/${id}/clear`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
-  setExceptionState: (id: string, body: { state: 'acknowledged' | 'escalated'; actorId: string }) =>
+  setExceptionState: (id: string, body: { state: 'acknowledged' | 'escalated' }) =>
     request<ExceptionRow>(`/api/exceptions/${id}/state`, {
       method: 'POST',
       body: JSON.stringify(body),

@@ -340,7 +340,7 @@ export async function postCashCount(
 
 export async function cashLedger(
   db: Db,
-  filter: { cashPointId?: string | undefined; limit?: number | undefined } = {},
+  filter: { cashPointId?: string | undefined; limit?: number | undefined; branchIds?: string[] | null } = {},
 ): Promise<
   {
     seq: number;
@@ -367,6 +367,7 @@ export async function cashLedger(
     ]);
 
   if (filter.cashPointId !== undefined) query = query.where('cash_movement.cash_point_id', '=', filter.cashPointId);
+  if (filter.branchIds != null) query = query.where('cash_point.branch_id', 'in', filter.branchIds);
 
   return query.orderBy('cash_movement.seq', 'desc').limit(filter.limit ?? 100).execute();
 }

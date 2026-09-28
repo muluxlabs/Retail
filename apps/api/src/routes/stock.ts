@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
+import { assertInScope, scopedBranchIds } from '../scope.js';
 import { parseQuery, queryBool } from '../validation.js';
 
 const stockQuery = z.object({
@@ -110,6 +111,8 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   /** The raw ledger. This is the audit trail, and it is the storage format. */
   app.get('/movements', { onRequest: [app.requirePermission('stock.read')] }, async (request) => {
     const q = parseQuery(movementQuery, request.query);
+    if (q.branchId !== undefined) assertInScope(request, q.branchId);
+    const limitTo = scopedBranchIds(request);
 
     let query = app.db
       .selectFrom('stock_movement')
@@ -137,6 +140,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
       ]);
 
     if (q.branchId !== undefined) query = query.where('stock_movement.branch_id', '=', q.branchId);
+    if (limitTo !== null) query = query.where('stock_movement.branch_id', 'in', limitTo);
     if (q.productId !== undefined) query = query.where('stock_movement.product_id', '=', q.productId);
 
     const items = await query
@@ -149,7 +153,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Movements recorded well after they happened. The backdating report. */
-  app.get('/movements/backdated', { onRequest: [app.requirePermission('stock.read')] }, async () =>
+  app.get('/movements/backdated', { onRequest: [app.requirePermission('stock.read')] }, async (request) =>
     app.db
       .selectFrom('backdated_movement')
       .innerJoin('product', 'product.id', 'backdated_movement.product_id')
@@ -165,6 +169,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
         'person.full_name as actorName',
         sql<number>`round(extract(epoch from backdated_movement.backdate_gap) / 86400, 1)`.as('gapDays'),
       ])
+      .$if(scopedBranchIds(request) !== null, (qb) => qb.where('backdated_movement.branch_id', 'in', scopedBranchIds(request) as string[]))
       .orderBy('backdated_movement.seq', 'desc')
       .limit(200)
       .execute(),

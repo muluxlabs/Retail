@@ -66,11 +66,27 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 
   app.decorate('db', options.db);
 
-  // Credentials must be allowed for the session cookie, and a wildcard origin
-  // is invalid alongside credentials, so production must list real origins.
+  // Credentials must be allowed for the session cookie, so only the origins
+  // listed may call the API from a browser. With none listed (production on
+  // Vercel, where the page and the API share one origin) no cross-origin call
+  // is allowed at all - reflecting any origin with credentials would let any
+  // website act as whoever is signed in.
   await app.register(cors, {
-    origin: options.corsOrigins ?? true,
+    origin: options.corsOrigins ?? false,
     credentials: true,
+  });
+
+  // Headers every response carries: never framed (clickjacking), never
+  // content-sniffed, no referrer leaking ids off-site, and API data never
+  // cached by a shared browser or proxy unless a route says otherwise.
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'same-origin');
+    if (request.url.startsWith('/api/') && reply.getHeader('Cache-Control') === undefined) {
+      reply.header('Cache-Control', 'no-store');
+    }
+    return payload;
   });
 
   await app.register(cookie, {

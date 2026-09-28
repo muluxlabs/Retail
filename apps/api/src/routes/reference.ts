@@ -172,10 +172,12 @@ export async function registerReferenceRoutes(app: FastifyInstance): Promise<voi
     return updated;
   });
 
+  // Names only. Staff phone numbers and emails are on the Users screen, for
+  // those allowed to manage people - not for every signed-in till.
   app.get('/people', { onRequest: [app.requireAuth] }, async () =>
     app.db
       .selectFrom('person')
-      .select(['id', 'full_name as fullName', 'phone', 'email', 'is_active as isActive'])
+      .select(['id', 'full_name as fullName', 'is_active as isActive'])
       .where('is_active', '=', true)
       .orderBy('full_name', 'asc')
       .execute(),

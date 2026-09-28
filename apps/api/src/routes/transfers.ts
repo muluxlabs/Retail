@@ -18,6 +18,7 @@ import {
   listTransfers,
   receiveTransfer,
 } from '../services/transfer.js';
+import { assertInScope } from '../scope.js';
 import { parseBody, parseParams, parseQuery } from '../validation.js';
 
 const idParams = z.object({ id: z.uuid() });
@@ -76,6 +77,7 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     { onRequest: [app.requirePermission('transfer.dispatch')] },
     async (request, reply) => {
       const body = parseBody(dispatchBody, request.body);
+      assertInScope(request, body.originBranchId);
       const actor = request.user;
       if (actor === null) {
         return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
@@ -96,6 +98,8 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     async (request, reply) => {
       const { id } = parseParams(idParams, request.params);
       const body = parseBody(receiveBody, request.body);
+      const t = await getTransfer(app.db, id);
+      if (t !== undefined) assertInScope(request, t.destinationBranchId);
       const actor = request.user;
       if (actor === null) {
         return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
@@ -112,6 +116,11 @@ export async function registerTransferRoutes(app: FastifyInstance): Promise<void
     async (request, reply) => {
       const { id } = parseParams(idParams, request.params);
       const body = parseBody(cancelBody, request.body);
+      // Only the sending branch (or someone group-wide) cancels: the receiving
+      // branch could otherwise keep goods that arrived while sending them back
+      // on paper.
+      const t = await getTransfer(app.db, id);
+      if (t !== undefined) assertInScope(request, t.originBranchId);
       const actor = request.user;
       if (actor === null) {
         return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });

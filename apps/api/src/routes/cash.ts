@@ -5,9 +5,10 @@
  * beyond routing and shape - the same discipline as every other write path.
  */
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
+import { assertInScope, scopedBranchIds } from '../scope.js';
 import {
   cashLedger,
   createCashPoint,
@@ -45,10 +46,24 @@ const moveBody = z.object({
 const countBody = z.object({ cashPointId: z.uuid(), countedAmount: z.number().nonnegative() });
 
 export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
+  /** Refuse unless every custody point named is at one of the caller's branches. Unknown ids fall through to a 404. */
+  async function assertPointsInScope(request: FastifyRequest, ids: string[]): Promise<void> {
+    if (scopedBranchIds(request) === null) return;
+    const points = await app.db.selectFrom('cash_point').select('branch_id').where('id', 'in', ids).execute();
+    for (const p of points) assertInScope(request, p.branch_id);
+  }
+
+  /** The caller's own branches' points, or one branch's when asked (and allowed). */
+  async function pointsInScope(request: FastifyRequest, branchId: string | undefined) {
+    if (branchId !== undefined) assertInScope(request, branchId);
+    const limitTo = scopedBranchIds(request);
+    const items = await listCashPoints(app.db, { branchId });
+    return limitTo === null ? items : items.filter((p) => limitTo.includes(p.branchId));
+  }
   /** Custody points with their current balance. */
   app.get('/cash', { onRequest: [app.requirePermission('cash.read')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
-    return { items: await listCashPoints(app.db, q) };
+    return { items: await pointsInScope(request, q.branchId) };
   });
 
   /**
@@ -59,7 +74,7 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get('/cash/points', { onRequest: [app.requirePermission('cash.count')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
-    const items = await listCashPoints(app.db, q);
+    const items = await pointsInScope(request, q.branchId);
     return {
       items: items.map(({ id, branchId, branchCode, kind, name, terminalId }) => ({
         id,
@@ -74,7 +89,8 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/cash/ledger', { onRequest: [app.requirePermission('cash.read')] }, async (request) => {
     const q = parseQuery(ledgerQuery, request.query);
-    return { items: await cashLedger(app.db, q) };
+    if (q.cashPointId !== undefined) await assertPointsInScope(request, [q.cashPointId]);
+    return { items: await cashLedger(app.db, { ...q, branchIds: scopedBranchIds(request) }) };
   });
 
   /**
@@ -84,6 +100,7 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/cash/points', { onRequest: [app.requirePermission('cash.move')] }, async (request, reply) => {
     const body = parseBody(createBody, request.body);
+    assertInScope(request, body.branchId);
     const actor = request.user;
     if (actor === null) {
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
@@ -95,6 +112,7 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
   /** Seed a custody point's opening balance. Refuses to run twice. */
   app.post('/cash/open', { onRequest: [app.requirePermission('cash.move')] }, async (request, reply) => {
     const body = parseBody(openBody, request.body);
+    await assertPointsInScope(request, [body.cashPointId]);
     const actor = request.user;
     if (actor === null) {
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
@@ -106,6 +124,7 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
   /** Float out, float back, or a bank deposit - one custody point to another. */
   app.post('/cash/move', { onRequest: [app.requirePermission('cash.move')] }, async (request, reply) => {
     const body = parseBody(moveBody, request.body);
+    await assertPointsInScope(request, [body.fromCashPointId, body.toCashPointId]);
     const actor = request.user;
     if (actor === null) {
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
@@ -121,6 +140,7 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post('/cash/count', { onRequest: [app.requirePermission('cash.count')] }, async (request, reply) => {
     const body = parseBody(countBody, request.body);
+    await assertPointsInScope(request, [body.cashPointId]);
     const actor = request.user;
     if (actor === null) {
       return reply.status(401).send({ error: { code: 'NOT_AUTHENTICATED', message: 'Sign in.' } });
