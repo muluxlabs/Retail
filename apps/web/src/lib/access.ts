@@ -20,7 +20,7 @@ export const AREAS: { name: string; permissions: string[] }[] = [
   { name: 'Buying', permissions: ['supplier.read', 'supplier.write', 'po.write', 'grn.post', 'purchase.return', 'supplier.pay'] },
   { name: 'Customers', permissions: ['customer.read', 'customer.write', 'loyalty.adjust'] },
   { name: 'Reports and oversight', permissions: ['dashboard.read', 'sale.read', 'exception.read', 'exception.clear', 'audit.read'] },
-  { name: 'Administration', permissions: ['user.read', 'user.manage', 'branch.manage', 'settings.manage'] },
+  { name: 'Administration', permissions: ['user.read', 'user.manage', 'branch.manage', 'settings.manage', 'data.export'] },
 ];
 
 export const PERMISSION_INFO: Record<string, PermissionInfo> = {
@@ -64,6 +64,7 @@ export const PERMISSION_INFO: Record<string, PermissionInfo> = {
   'user.manage': { label: 'Create staff, set roles and access', opens: 'Staff', sensitive: true },
   'branch.manage': { label: 'Add and change branches', opens: 'Branches', sensitive: true },
   'settings.manage': { label: 'Change system settings', opens: 'Settings', sensitive: true },
+  'data.export': { label: 'Export records to Excel or CSV (items, suppliers, customers, price lists)', opens: 'Export records', sensitive: true },
 };
 
 export const ROLE_LABEL: Record<string, string> = {

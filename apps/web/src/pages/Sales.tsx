@@ -9,6 +9,8 @@
 import { useState } from 'react';
 
 import { ReceiptDialog } from '../components/Receipt.js';
+import { allPages } from '../lib/allPages.js';
+import { downloadCsv } from '../lib/csv.js';
 import { ReportTabs } from '../components/ReportTabs.js';
 import { api, ApiError, type Receipt } from '../lib/api.js';
 import { Button, Card, Empty, ErrorNote, Spinner, money, useAsync } from '../lib/ui.js';
@@ -51,6 +53,26 @@ export function Sales() {
   }
 
   const field = 'border-ink-200 focus:border-accent-500 rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none';
+  const [exporting, setExporting] = useState(false);
+
+  /** Every receipt matching the filters, not only the page on screen. */
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const all = await allPages(
+        async (limit, offset) =>
+          (await api.sales({ ...(branchId === '' ? {} : { branchId }), ...(from === '' ? {} : { from }), ...(to === '' ? {} : { to }), ...(q === '' ? {} : { q }), limit, offset })).items,
+        200,
+      );
+      downloadCsv(
+        `sales-receipts-${from || 'all'}-to-${to || 'today'}.csv`,
+        ['Receipt', 'Date and time', 'Branch', 'Cashier', 'Items', 'Discount', 'Total', 'Paid by'],
+        all.map((s) => [s.receiptNo, new Date(s.occurredAt).toLocaleString('en-GB'), s.branchCode, s.cashierName, s.itemCount, Number(s.discount), Number(s.net), s.paidBy ?? '']),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -118,6 +140,9 @@ export function Sales() {
               className={`${field} w-36 font-mono`}
             />
           </label>
+          <Button onClick={() => void exportCsv()} disabled={exporting} data-testid="sales-export">
+            {exporting ? 'Preparing…' : 'Export CSV'}
+          </Button>
         </div>
       </Card>
 

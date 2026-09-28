@@ -17,6 +17,7 @@ import { api, ApiError, type PriceListPreview, type PriceRuleInput } from '../li
 import { useAuth } from '../lib/auth.js';
 import { parseMoney } from '../lib/basketMath.js';
 import { packCost, shortDateTime } from '../lib/buying.js';
+import { ExportButton } from '../components/ExportButton.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, money, useAsync } from '../lib/ui.js';
 
 const field = 'border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none';
@@ -48,11 +49,14 @@ export function PriceLists() {
             When a supplier sends new prices, import them here: their costs are recorded, and your selling prices can follow.
           </p>
         </div>
-        {can('price.write') && (
-          <Link to={`/price-lists/new${supplierId === '' ? '' : `?supplierId=${supplierId}`}`}>
-            <Button variant="primary">Import a price list</Button>
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportButton kind="price-lists" />
+          {can('price.write') && (
+            <Link to={`/price-lists/new${supplierId === '' ? '' : `?supplierId=${supplierId}`}`}>
+              <Button variant="primary">Import a price list</Button>
+            </Link>
+          )}
+        </div>
       </div>
       <Card className="px-4 py-3">
         <label className="block max-w-xs">

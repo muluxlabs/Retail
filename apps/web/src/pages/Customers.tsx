@@ -14,6 +14,7 @@ import { useAuth } from '../lib/auth.js';
 import { parseMoney } from '../lib/basketMath.js';
 import { shortDate, shortDateTime } from '../lib/buying.js';
 import { downloadCsv } from '../lib/csv.js';
+import { ExportButton } from '../components/ExportButton.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, money, useAsync } from '../lib/ui.js';
 
 const field = 'border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none';
@@ -151,6 +152,8 @@ export function Customers() {
             choosing the customer and paying "On account".
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <ExportButton kind="customers" />
         {can('customer.write') && (
           <div className="flex gap-2">
             <Link
@@ -164,6 +167,7 @@ export function Customers() {
             </Button>
           </div>
         )}
+        </div>
       </div>
       {adding && (
         <CustomerForm

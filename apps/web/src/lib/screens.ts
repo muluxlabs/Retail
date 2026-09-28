@@ -61,6 +61,7 @@ export const SCREENS: Screen[] = [
 
   { to: '/users', label: 'Staff and access', area: 'Administration', description: 'People, their roles, and what each one may do.', permission: ['user.read'], keywords: 'users staff roles permissions access password', alsoActive: ['/users/'] },
   { to: '/branches', label: 'Branches', area: 'Administration', description: 'Shops and warehouses.', permission: ['branch.manage'], keywords: 'store shop warehouse location' },
+  { to: '/exports', label: 'Export records', area: 'Administration', description: 'Download items, suppliers, customers, price lists or staff as Excel or CSV.', permission: ['data.export'], keywords: 'export download excel csv spreadsheet backup list items products suppliers customers staff price' },
   { to: '/settings', label: 'Settings', area: 'Administration', description: 'Business details, receipts, shifts, loyalty.', permission: ['settings.manage'], keywords: 'configuration receipt loyalty shifts time zone' },
   { to: '/docs', label: 'User guide', area: 'Administration', description: 'How everything works, with pictures.', permission: [], keywords: 'help documentation manual guide how to' },
 ];

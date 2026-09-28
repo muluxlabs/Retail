@@ -88,6 +88,18 @@ export interface Branch {
   isActive: boolean;
 }
 
+export type ExportKind = 'items' | 'suppliers' | 'customers' | 'price-lists' | 'staff';
+
+export interface ExportResult {
+  kind: ExportKind;
+  title: string;
+  fileName: string;
+  generatedAt: string;
+  note: string | null;
+  columns: { heading: string; kind: 'text' | 'number' | 'money' | 'date' | 'yesno' }[];
+  rows: (string | number | boolean | null)[][];
+}
+
 export interface Person {
   id: string;
   fullName: string;
@@ -1539,6 +1551,9 @@ export const api = {
       }[];
     }>('/api/products/imports'),
 
+  /** A whole list for Excel or CSV. Needs data.export; recorded in the audit log. */
+  exportRecords: (kind: ExportKind, format: 'xlsx' | 'csv') => request<ExportResult>(`/api/exports/${kind}?format=${format}`),
+
   audit: (params: {
     from?: string;
     to?: string;
@@ -1681,7 +1696,7 @@ export const api = {
   removeBarcode: (code: string) =>
     request<unknown>(`/api/barcodes/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 
-  stock: (params: { branchId?: string; search?: string; negativeOnly?: boolean; limit?: number } = {}) =>
+  stock: (params: { branchId?: string; search?: string; negativeOnly?: boolean; limit?: number; offset?: number } = {}) =>
     request<{ items: StockLine[] }>(`/api/stock${qs(params)}`),
 
   stockByBranch: () => request<BranchStock[]>('/api/stock/by-branch'),

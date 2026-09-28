@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api, ApiError, type Category, type Pack } from '../lib/api.js';
+import { ExportButton } from '../components/ExportButton.js';
 import { useAuth } from '../lib/auth.js';
 import { parseMoney } from '../lib/basketMath.js';
 import { stockReason } from '../lib/terms.js';
@@ -60,6 +61,7 @@ export function Products() {
           <div className="text-ink-400 text-xs">
             {products.data !== undefined && `${products.data.total} active products`}
           </div>
+          <ExportButton kind="items" />
           {can('product.write') && (
             <div className="flex gap-2">
               <Link

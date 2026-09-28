@@ -12,6 +12,7 @@ import { BuyingTabs } from '../components/BuyingTabs.js';
 import { api, ApiError, type SupplierInput, type SupplierTerms } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { balanceWords, shortDate, termsText, TERMS_HELP, TERMS_LABEL } from '../lib/buying.js';
+import { ExportButton } from '../components/ExportButton.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, money, useAsync } from '../lib/ui.js';
 
 const field = 'border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] outline-none';
@@ -41,6 +42,8 @@ export function Suppliers() {
             it against the order, and record what has been paid.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <ExportButton kind="suppliers" />
         {can('supplier.write') && (
           <div className="flex gap-2">
             <Link
@@ -54,6 +57,7 @@ export function Suppliers() {
             </Button>
           </div>
         )}
+        </div>
       </div>
 
       {adding && (

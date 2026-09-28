@@ -211,6 +211,7 @@ Paths are relative to `/api`. **Permission** is what the signed-in account needs
 | PUT | `/users/:id/access/:permission` | user.manage | `{"effect":"grant"|"revoke"|"role","note":…}` |
 | GET | `/permissions` | user.read | All permissions and what each role holds |
 | GET · PATCH | `/settings`, `/settings/:key` | settings.manage | System settings |
+| GET | `/exports/:kind?format=xlsx\|csv` | data.export + the list's own read permission | `kind` = items, suppliers, customers, price-lists, staff. Returns `{title, columns:[{heading, kind}], rows, note, fileName}`; recorded in the audit log |
 | GET | `/health`, `/ready` *(no /api prefix)* | public | Liveness; database readiness |
 
 ## Building an integration — good practice

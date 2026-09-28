@@ -14,6 +14,7 @@ export const AUDIT_GROUPS: { name: string; actions: string[] }[] = [
   { name: 'Shifts and end of day', actions: ['SHIFT_OPENED', 'SHIFT_CLOSED', 'DAY_CLOSED'] },
   { name: 'Branches and settings', actions: ['BRANCH_CREATED', 'BRANCH_UPDATED', 'SETTING_CHANGED'] },
   { name: 'Exceptions', actions: ['EXCEPTION_CLEARED'] },
+  { name: 'Exports', actions: ['RECORDS_EXPORTED'] },
 ];
 
 export const AUDIT_LABEL: Record<string, string> = {
@@ -68,6 +69,7 @@ export const AUDIT_LABEL: Record<string, string> = {
   BRANCH_UPDATED: 'Changed a branch',
   SETTING_CHANGED: 'Changed a setting',
   EXCEPTION_CLEARED: 'Cleared an exception',
+  RECORDS_EXPORTED: 'Exported records',
 };
 
 /** Sensitive changes are highlighted in the list. */

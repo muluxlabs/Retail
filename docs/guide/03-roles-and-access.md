@@ -74,4 +74,4 @@ What happens next:
 | Buying | See suppliers and costs · Change suppliers · Order · Receive · Return · Pay suppliers *(sensitive)* | Buying |
 | Customers | See customers · Add customers and set credit *(sensitive)* · Adjust loyalty points *(sensitive)* | Customers |
 | Oversight | Overview · Sales, costs and profit · Exceptions (see / clear) · See the audit log | Overview, Reports, Exceptions › Exception queue, Exceptions › Audit log |
-| Administration | See staff · Manage staff and access *(sensitive)* · Branches *(sensitive)* · Settings *(sensitive)* | Staff, Branches, Settings |
+| Administration | See staff · Manage staff and access *(sensitive)* · Branches *(sensitive)* · Settings *(sensitive)* · Export records to Excel or CSV *(sensitive)* | Staff, Branches, Settings, Export records |

@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 import { ROLE_LABEL } from '../lib/access.js';
 import { api, ApiError, type Branch, type UserRow } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
+import { ExportButton } from '../components/ExportButton.js';
 import { Badge, Button, Card, Empty, ErrorNote, Spinner, timeAgo, useAsync } from '../lib/ui.js';
 
 export function Users() {
@@ -32,11 +33,14 @@ export function Users() {
             One person, one record. Roles grant named capabilities, not a rank.
           </p>
         </div>
-        {can('user.manage') && (
-          <Button variant="primary" onClick={() => setCreating((v) => !v)}>
-            {creating ? 'Cancel' : 'Add person'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportButton kind="staff" />
+          {can('user.manage') && (
+            <Button variant="primary" onClick={() => setCreating((v) => !v)}>
+              {creating ? 'Cancel' : 'Add person'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {issued !== null && (
