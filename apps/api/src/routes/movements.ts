@@ -8,8 +8,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { assertInScope } from '../scope.js';
 import { parseBody } from '../validation.js';
-import { postCount, postMovement, resolveBarcode, sell } from '../services/stock.js';
+import { logUnlistedScan, postCount, postMovement, resolveBarcode } from '../services/stock.js';
 
 const REASONS = [
   'grn',
@@ -31,29 +32,39 @@ const movementBody = z.object({
   branchId: z.uuid(),
   qtyBase: z.number().refine((n) => n !== 0, 'A movement must carry a non-zero quantity'),
   reason: z.enum(REASONS),
-  actorId: z.uuid(),
+  /** Ignored: a movement is always recorded against the signed-in person. Accepted so older clients keep working. */
+  actorId: z.uuid().optional(),
   unitCost: z.number().nonnegative().nullable().default(null),
   docType: z.string().trim().max(32).nullable().default(null),
   docId: z.uuid().nullable().default(null),
   terminalId: z.uuid().nullable().default(null),
   occurredAt: z.coerce.date().optional(),
-  allowNegative: z.boolean().default(false),
+  // Deliberately NOT a field here. allowNegative bypasses the negative-stock
+  // guard entirely, and /api/sales is the only place a client is allowed to
+  // ask for that - gated on stock.override, and logged as an exception when
+  // used. Internal callers that legitimately need it (postCount's shortage
+  // adjustments, cancelTransfer's reversal) call postMovement/postMovementInTx
+  // directly in TypeScript, never through this HTTP route, so they are
+  // unaffected by its absence here. A generic movement.post holder posting
+  // straight through this endpoint gets exactly the same block an
+  // overselling till does, with no way to lift it - that used to not be
+  // true, and it was a real hole: confirmed live, a cashier with no
+  // stock.override could drive stock to -999,895 through this endpoint
+  // alone, bypassing the same control /api/sales correctly enforces.
 });
 
-const sellBody = z.object({
-  eventId: z.uuid().optional(),
-  barcode: z.string().trim().min(1).max(32),
-  qtyPacks: z.number().positive(),
+const unlistedScanBody = z.object({
+  code: z.string().trim().min(1).max(32),
   branchId: z.uuid(),
-  actorId: z.uuid(),
+  /** Ignored - the signed-in person. */
+  actorId: z.uuid().optional(),
   terminalId: z.uuid().nullable().default(null),
-  overrideNegative: z.boolean().default(false),
-  overrideBy: z.uuid().nullable().default(null),
 });
 
 const countBody = z.object({
   branchId: z.uuid(),
-  actorId: z.uuid(),
+  /** Ignored - the signed-in person. */
+  actorId: z.uuid().optional(),
   docId: z.uuid().optional(),
   occurredAt: z.coerce.date().optional(),
   lines: z
@@ -61,37 +72,47 @@ const countBody = z.object({
     .min(1, 'A count needs at least one line.'),
 });
 
+/**
+ * Holding movement.post - which a cashier does, to sell - must not be enough to
+ * put stock on the books. Each reason needs the authority that fits it, and the
+ * ones with a proper document of their own (a sale, a transfer) are not posted
+ * through this route at all.
+ */
+const REASON_PERMISSION: Partial<Record<(typeof REASONS)[number], string>> = {
+  grn: 'grn.post',
+  grn_reversal: 'grn.post',
+  count_adjustment: 'stock.adjust',
+  write_off: 'stock.adjust',
+  opening_balance: 'stock.adjust',
+};
+
 export async function registerMovementRoutes(app: FastifyInstance): Promise<void> {
   /** Post one movement. Idempotent on eventId. */
   app.post('/movements', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
     const body = parseBody(movementBody, request.body);
-    const result = await postMovement(app.db, body);
+    const needed = REASON_PERMISSION[body.reason];
+    if (needed === undefined) {
+      return reply.status(422).send({
+        error: {
+          code: 'INVALID_MOVEMENT',
+          message: `A ${body.reason.replace(/_/g, ' ')} is posted through its own screen (checkout, transfers), not as a bare stock movement.`,
+        },
+      });
+    }
+    if (request.user?.permissions.has(needed) !== true) {
+      return reply.status(403).send({
+        error: { code: 'NOT_PERMITTED', message: 'Your role does not allow that action.', detail: { permission: needed } },
+      });
+    }
+    assertInScope(request, body.branchId);
+    const result = await postMovement(app.db, { ...body, actorId: request.user!.personId });
     // A replay is a success, but it is not a creation.
     return reply.status(result.replayed ? 200 : 201).send(result);
   });
 
-  /** A till sale, by barcode, in packs. */
-  app.post('/sales', { onRequest: [app.requirePermission('movement.post')] }, async (request, reply) => {
-    const body = parseBody(sellBody, request.body);
-
-    // Overriding the negative-stock guard is a separate capability from making
-    // a sale. Their stated problem is cashiers overriding "to their own
-    // benefit"; a cashier holding movement.post must not be able to do it
-    // alone, so the override is refused unless the caller also holds
-    // stock.override.
-    if (body.overrideNegative && request.user?.permissions.has('stock.override') !== true) {
-      return reply.status(403).send({
-        error: {
-          code: 'NOT_PERMITTED',
-          message: 'Overriding negative stock requires manager authorisation.',
-          detail: { permission: 'stock.override' },
-        },
-      });
-    }
-
-    const result = await sell(app.db, body);
-    return reply.status(result.replayed ? 200 : 201).send(result);
-  });
+  // There is deliberately no single-item sale route here any more. A sale is a
+  // basket with a receipt, and POST /api/sales/checkout is the only way to make
+  // one - see routes/sales.ts. Two ways to sell would mean two sets of rules.
 
   /**
    * Post a stock count.
@@ -101,7 +122,8 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    */
   app.post('/counts', { onRequest: [app.requirePermission('stock.adjust')] }, async (request, reply) => {
     const body = parseBody(countBody, request.body);
-    const result = await postCount(app.db, body);
+    assertInScope(request, body.branchId);
+    const result = await postCount(app.db, { ...body, actorId: request.user!.personId });
     const varianceLines = result.lines.filter((l) => l.variance !== 0);
     return reply.status(201).send({
       ...result,
@@ -123,8 +145,28 @@ export async function registerMovementRoutes(app: FastifyInstance): Promise<void
    * An unresolved code returns 404 via `UnlistedBarcode`; the till is expected
    * to follow that with an exception, which is what makes the scan evidence.
    */
-  app.get('/barcodes/:code', { onRequest: [app.requirePermission('product.read')] }, async (request) => {
+  // A scan at the till: selling is enough.
+  app.get('/barcodes/:code', { onRequest: [app.requireAnyPermission('product.read', 'movement.post')] }, async (request) => {
     const { code } = z.object({ code: z.string().trim().min(1).max(32) }).parse(request.params);
     return resolveBarcode(app.db, code);
   });
+
+  /**
+   * Log a scan that did not resolve to anything.
+   *
+   * This is the endpoint the route comment above always assumed existed. It
+   * didn't: resolveBarcode returning 404 was a dead end with nothing writing
+   * the exception it promised. Under-the-counter selling stays invisible
+   * exactly as long as this gap does.
+   */
+  app.post(
+    '/scans/unlisted',
+    { onRequest: [app.requirePermission('movement.post')] },
+    async (request, reply) => {
+      const body = parseBody(unlistedScanBody, request.body);
+      assertInScope(request, body.branchId);
+      const result = await logUnlistedScan(app.db, { ...body, actorId: request.user!.personId });
+      return reply.status(201).send(result);
+    },
+  );
 }

@@ -19,7 +19,23 @@ import {
   writeAuthAudit,
 } from '../services/auth.js';
 import { checkPasswordStrength, hashPassword, verifyPassword } from '@retail-ops/db';
+import { sql } from 'kysely';
+
 import { parseBody } from '../validation.js';
+
+/**
+ * Different accounts that may fail to sign in from one address within
+ * LOGIN_WINDOW_MINUTES before that address is refused outright. The
+ * per-account lock stops guessing one person's password; this stops one common
+ * password being tried against every account (spraying), which never trips
+ * any single account's lock. It counts accounts, not attempts, so staff at a
+ * branch sharing one internet address mistyping their own passwords do not
+ * lock the whole branch out. The server's own machine is never refused - a
+ * sign-in from it cannot have come from the internet.
+ */
+const LOGIN_ACCOUNTS_PER_ADDRESS = 20;
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const LOGIN_WINDOW_MINUTES = 15;
 
 const loginBody = z.object({
   email: z.string().trim().min(3).max(200),
@@ -64,6 +80,24 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/auth/login', async (request, reply) => {
     const body = parseBody(loginBody, request.body);
+
+    // An unknown email is recorded by name, a known one by person: distinct either way.
+    const recent = LOOPBACK.has(request.ip)
+      ? null
+      : await sql<{ n: number }>`
+          SELECT count(DISTINCT coalesce(actor_id::text, state_after->>'email'))::int AS n FROM audit_log
+          WHERE action_code = 'LOGIN_FAILED' AND state_after->>'ip' = ${request.ip}
+            AND occurred_at > now() - make_interval(mins => ${LOGIN_WINDOW_MINUTES})`.execute(app.db);
+    if (recent !== null && (recent.rows[0]?.n ?? 0) >= LOGIN_ACCOUNTS_PER_ADDRESS) {
+      await writeAuthAudit(app.db, null, 'LOGIN_BLOCKED', { reason: 'address', email: body.email.trim().toLowerCase() }, {
+        ip: request.ip,
+        userAgent: request.headers['user-agent'] ?? null,
+      });
+      return reply
+        .status(429)
+        .header('Retry-After', String(LOGIN_WINDOW_MINUTES * 60))
+        .send({ error: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many failed sign-ins from this network. Try again in 15 minutes.' } });
+    }
 
     const result = await login(app.db, {
       email: body.email,

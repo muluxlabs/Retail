@@ -54,6 +54,13 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   cash_variance: 'Cash variance',
   price_override: 'Price override',
   void_after_tender: 'Void after tender',
+  unreviewed_product: 'Product added at the till',
+  stock_reset: 'Branch stock set to zero',
+  opening_stock: 'Opening stock introduced',
+  credit_limit_change: 'Credit limit raised',
+  shift_variance: 'Till over / short on a shift',
+  loyalty_adjustment: 'Loyalty points changed by hand',
+  access_granted: 'Access given beyond a role',
 };
 
 /**
@@ -69,6 +76,13 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   cash_variance: 'Declared cash did not match counted cash.',
   price_override: 'An item was sold away from its list price.',
   void_after_tender: 'A line was voided after payment was taken.',
+  unreviewed_product: 'A cashier could not find this item and added it to finish the sale.',
+  stock_reset: 'A manager zeroed every product at a branch. It cannot be undone - review the reason given.',
+  opening_stock: 'Stock was brought onto the books with no supplier invoice behind it. Check the quantities and costs against a count.',
+  credit_limit_change: 'A customer was allowed to owe more. Check who raised it and that the customer pays on time.',
+  shift_variance: 'The cash counted in a till at the start or end of a shift did not match the books. The cashier on that shift is named.',
+  loyalty_adjustment: 'Points are worth money at the till. Check who changed a customer\'s points, by how many, and the reason given.',
+  access_granted: 'Someone was given a permission their role does not include. Check it is still needed, and who gave it.',
 };
 
 // -- primitives --------------------------------------------------------------
@@ -76,12 +90,11 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
 export function Card({
   children,
   className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+  ...rest
+}: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      {...rest}
       className={`bg-white border border-ink-200/80 rounded-xl shadow-[0_1px_2px_rgba(16,24,40,0.04)] ${className}`}
     >
       {children}

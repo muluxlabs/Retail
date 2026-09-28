@@ -14,7 +14,8 @@ export type MovementReason =
   | 'transfer_loss'
   | 'count_adjustment'
   | 'write_off'
-  | 'opening_balance';
+  | 'opening_balance'
+  | 'stock_reset';
 
 /** Reasons that represent stock entering at a known cost, used to derive WAC. */
 export const RECEIPT_REASONS: readonly MovementReason[] = [
@@ -31,7 +32,14 @@ export type ExceptionKind =
   | 'transit_loss'
   | 'cash_variance'
   | 'price_override'
-  | 'void_after_tender';
+  | 'void_after_tender'
+  | 'unreviewed_product'
+  | 'stock_reset'
+  | 'opening_stock'
+  | 'credit_limit_change'
+  | 'shift_variance'
+  | 'loyalty_adjustment'
+  | 'access_granted';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 

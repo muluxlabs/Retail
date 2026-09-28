@@ -9,14 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/vite": "4.1.16",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "5.0.4",
+    "marked": "16.4.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-router-dom": "7.18.3",
-    "vite": "7.3.6",
-    "@vitejs/plugin-react": "5.0.4",
-    "@tailwindcss/vite": "4.1.16",
+    "read-excel-file": "9.3.10",
     "tailwindcss": "4.1.16",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.1"
+    "vite": "7.3.6",
+    "write-excel-file": "4.1.1"
   }
 }

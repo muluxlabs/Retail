@@ -13,7 +13,9 @@
 
 import { useState } from 'react';
 
-import { api, ApiError, type ExceptionRow, type ExceptionState } from '../lib/api.js';
+import { ControlsTabs } from '../components/ControlsTabs.js';
+import { api, ApiError, type ExceptionRow, type ExceptionState, type Product } from '../lib/api.js';
+import { useAuth } from '../lib/auth.js';
 import {
   Badge,
   Button,
@@ -57,13 +59,12 @@ export function Exceptions() {
     [state, kind],
   );
 
-  const people = useAsync(() => api.people(), []);
-
   const items = query.data?.items ?? [];
   const selected = items.find((i) => i.id === selectedId) ?? items[0];
 
   return (
     <div className="space-y-4">
+      <ControlsTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Exception queue</h1>
@@ -215,7 +216,6 @@ export function Exceptions() {
             <Detail
               key={selected.id}
               row={selected}
-              people={people.data ?? []}
               onDone={() => {
                 setSelectedId(null);
                 query.reload();
@@ -230,14 +230,13 @@ export function Exceptions() {
 
 function Detail({
   row,
-  people,
   onDone,
 }: {
   row: ExceptionRow;
-  people: { id: string; fullName: string }[];
   onDone: () => void;
 }) {
-  const [clearedBy, setClearedBy] = useState('');
+  // Cleared by whoever is signed in - the server records that, not a name picked from a list.
+  const { user } = useAuth();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +248,7 @@ function Detail({
     setBusy(true);
     setError(null);
     try {
-      await api.clearException(row.id, { clearedBy, note });
+      await api.clearException(row.id, { note });
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -259,14 +258,10 @@ function Detail({
   }
 
   async function mark(state: 'acknowledged' | 'escalated') {
-    if (clearedBy === '') {
-      setError('Choose who is doing this first.');
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      await api.setExceptionState(row.id, { state, actorId: clearedBy });
+      await api.setExceptionState(row.id, { state });
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -339,25 +334,17 @@ function Detail({
             <p className="text-ink-600 mt-2 italic">“{row.clearingNote}”</p>
           )}
         </div>
+      ) : row.kind === 'unreviewed_product' && row.productId !== null ? (
+        <ProductReviewActions productId={row.productId} onDone={onDone} />
       ) : (
         <form onSubmit={submit} className="border-ink-100 bg-ink-50/50 space-y-2.5 border-t px-4 py-3.5">
           <div>
             <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
               Cleared by
             </label>
-            <select
-              required
-              value={clearedBy}
-              onChange={(e) => setClearedBy(e.target.value)}
-              className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
-            >
-              <option value="">Select a person…</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.fullName}
-                </option>
-              ))}
-            </select>
+            <div className="text-ink-800 text-[12.5px]" data-testid="cleared-by">
+              {user?.fullName ?? '—'} <span className="text-ink-400">(you)</span>
+            </div>
           </div>
           <div>
             <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
@@ -394,6 +381,235 @@ function Detail({
         </form>
       )}
     </Card>
+  );
+}
+
+/**
+ * The two resolutions for a cashier-created product, in place of the
+ * generic clear form: approve and merge both clear the exception themselves
+ * as part of resolving the product (products.ts), so there is no separate
+ * "clear without deciding" path here - that would leave the product
+ * permanently pending with nothing pointing back at it.
+ */
+function ProductReviewActions({ productId, onDone }: { productId: string; onDone: () => void }) {
+  const [mode, setMode] = useState<'approve' | 'merge' | null>(null);
+
+  if (mode === 'approve') {
+    return <ApproveForm productId={productId} onDone={onDone} onCancel={() => setMode(null)} />;
+  }
+  if (mode === 'merge') {
+    return <MergeForm productId={productId} onDone={onDone} onCancel={() => setMode(null)} />;
+  }
+
+  return (
+    <div className="border-ink-100 bg-ink-50/50 space-y-2.5 border-t px-4 py-3.5">
+      <p className="text-ink-500 text-[12px]">
+        Did this already exist under another name, or is it genuinely new?
+      </p>
+      <div className="flex items-center gap-2">
+        <Button variant="primary" onClick={() => setMode('approve')}>
+          Accept as new
+        </Button>
+        <Button onClick={() => setMode('merge')}>Merge into existing</Button>
+      </div>
+    </div>
+  );
+}
+
+function ApproveForm({
+  productId,
+  onDone,
+  onCancel,
+}: {
+  productId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const categories = useAsync(() => api.categories(), []);
+  const [categoryId, setCategoryId] = useState('');
+  const [note, setNote] = useState('Reviewed and accepted into the item master.');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.approveProduct(productId, {
+        ...(categoryId === '' ? {} : { categoryId }),
+        note,
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="border-ink-100 bg-ink-50/50 space-y-2.5 border-t px-4 py-3.5">
+      <div>
+        <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+          Category
+        </label>
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+        >
+          <option value="">No category</option>
+          {(categories.data ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+          Note
+        </label>
+        <textarea
+          required
+          minLength={3}
+          rows={2}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="border-ink-200 focus:border-accent-500 w-full resize-none rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+        />
+      </div>
+      {error !== null && <div className="text-[12px] text-red-600">{error}</div>}
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="primary" disabled={busy}>
+          {busy ? <Spinner /> : null}
+          Accept into the master
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Back
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function MergeForm({
+  productId,
+  onDone,
+  onCancel,
+}: {
+  productId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [target, setTarget] = useState<Product | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const results = useAsync(
+    () =>
+      search.trim() === ''
+        ? Promise.resolve({ items: [], total: 0, limit: 0, offset: 0 })
+        : api.products({ search, limit: 8 }),
+    [search],
+  );
+
+  async function submit() {
+    if (target === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.mergeProduct(productId, {
+        targetProductId: target.id,
+        ...(note.trim() === '' ? {} : { note: note.trim() }),
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="border-ink-100 bg-ink-50/50 space-y-2.5 border-t px-4 py-3.5">
+      {target === null ? (
+        <div>
+          <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+            Find the existing product
+          </label>
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or SKU…"
+            className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+          />
+          {search.trim() !== '' && (
+            <div className="border-ink-100 mt-1.5 max-h-40 divide-y overflow-y-auto rounded-lg border bg-white">
+              {results.loading ? (
+                <div className="grid place-items-center py-3">
+                  <Spinner />
+                </div>
+              ) : (results.data?.items.length ?? 0) === 0 ? (
+                <p className="text-ink-400 px-3 py-2 text-[12px]">No match for “{search}”.</p>
+              ) : (
+                (results.data?.items ?? [])
+                  .filter((p) => p.id !== productId)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setTarget(p)}
+                      className="hover:bg-ink-50 flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[12.5px]"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      <span className="text-ink-400 shrink-0 font-mono text-[11px]">{p.sku}</span>
+                    </button>
+                  ))
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 text-[12.5px]">
+          <span>
+            Merging into <span className="font-medium">{target.name}</span>{' '}
+            <span className="text-ink-400 font-mono text-[11px]">{target.sku}</span>
+          </span>
+          <button onClick={() => setTarget(null)} className="text-ink-400 hover:text-ink-700 text-[11.5px]">
+            change
+          </button>
+        </div>
+      )}
+
+      <div>
+        <label className="text-ink-600 mb-1 block text-[11px] font-medium uppercase tracking-wider">
+          Note (optional)
+        </label>
+        <textarea
+          rows={2}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Duplicate of an item already in the master under this name."
+          className="border-ink-200 focus:border-accent-500 w-full resize-none rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
+        />
+      </div>
+
+      {error !== null && <div className="text-[12px] text-red-600">{error}</div>}
+
+      <div className="flex items-center gap-2">
+        <Button variant="primary" onClick={() => void submit()} disabled={busy || target === null}>
+          {busy ? <Spinner /> : null}
+          Merge
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Back
+        </Button>
+      </div>
+    </div>
   );
 }
 

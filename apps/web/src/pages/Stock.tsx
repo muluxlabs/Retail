@@ -9,9 +9,14 @@
 import { useState } from 'react';
 
 import { api } from '../lib/api.js';
+import { allPages } from '../lib/allPages.js';
+import { useAuth } from '../lib/auth.js';
+import { downloadCsv } from '../lib/csv.js';
 import { Badge, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
+import { StartFresh } from './StartFresh.js';
 
 export function Stock() {
+  const { can } = useAuth();
   const [branchId, setBranchId] = useState('');
   const [search, setSearch] = useState('');
   const [negativeOnly, setNegativeOnly] = useState(false);
@@ -30,6 +35,26 @@ export function Stock() {
 
   const items = stock.data?.items ?? [];
   const totalValue = items.reduce((sum, i) => sum + Number(i.value), 0);
+  const [exporting, setExporting] = useState(false);
+
+  /** Every line matching the filters (not only the first page on screen). */
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const all = await allPages(
+        async (limit, offset) =>
+          (await api.stock({ ...(branchId === '' ? {} : { branchId }), ...(search === '' ? {} : { search }), ...(negativeOnly ? { negativeOnly: true } : {}), limit, offset })).items,
+        500,
+      );
+      downloadCsv(
+        `stock-on-hand-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['SKU', 'Item', 'Branch', 'On hand', 'Unit', 'Unit cost', 'Value'],
+        all.map((l) => [l.sku, l.productName, l.branchCode, Number(l.qtyBase), l.baseUom, l.wac === null ? '' : Number(l.wac), Number(l.value)]),
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -45,6 +70,12 @@ export function Stock() {
             Shown
           </div>
           <div className="tnum text-base font-semibold">{money(totalValue)}</div>
+          {/* The panel sits below a long list; a manager who needs it should not have to hunt. */}
+          {can('stock.reset') && (
+            <a href="#start-fresh" className="mt-1 block text-[11.5px] text-red-700 hover:underline">
+              Start a branch fresh ↓
+            </a>
+          )}
         </div>
       </div>
 
@@ -76,6 +107,14 @@ export function Stock() {
           }`}
         >
           Below zero only
+        </button>
+        <button
+          onClick={() => void exportCsv()}
+          disabled={exporting}
+          className="ring-ink-200 text-ink-600 hover:bg-ink-50 rounded-lg bg-white px-2.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset"
+          data-testid="stock-export"
+        >
+          {exporting ? 'Preparing…' : 'Export CSV'}
         </button>
       </div>
 
@@ -145,6 +184,12 @@ export function Stock() {
           </div>
         )}
       </Card>
+
+      {can('stock.reset') && (
+        <div id="start-fresh" className="scroll-mt-20">
+          <StartFresh />
+        </div>
+      )}
     </div>
   );
 }

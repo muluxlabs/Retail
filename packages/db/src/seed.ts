@@ -219,6 +219,8 @@ export interface SeedResult {
   barcodes: number;
   movements: number;
   exceptions: number;
+  cashPoints: number;
+  cashMovements: number;
 }
 
 export async function isSeeded(db: Kysely<Database>): Promise<boolean> {
@@ -261,15 +263,18 @@ export async function seed(
     }
     log(`  + ${BRANCHES.length} branches`);
 
+    const terminalIds: { branchCode: string; branchId: string; terminalId: string }[] = [];
     for (const b of BRANCHES) {
       const branchId = branchIds.get(b.code);
       if (branchId === undefined || b.kind === 'warehouse') continue;
       const tills = b.code === 'KANA' ? 3 : 2;
       for (let i = 1; i <= tills; i += 1) {
-        await tx
+        const row = await tx
           .insertInto('terminal')
           .values({ branch_id: branchId, code: `${b.code}-TILL-${i}` })
-          .execute();
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        terminalIds.push({ branchCode: b.code, branchId, terminalId: row.id });
       }
     }
 
@@ -340,7 +345,7 @@ export async function seed(
       categoryIds.set(name, row.id);
     }
 
-    interface Loaded { id: string; sku: string; cost: number; sellPackQty: number; buyPackQty: number }
+    interface Loaded { id: string; sku: string; cost: number; sellPackQty: number; buyPackQty: number; sellPackId: string; sellPrice: number }
     const loaded: Loaded[] = [];
     let packCount = 0;
     let barcodeCount = 0;
@@ -361,7 +366,11 @@ export async function seed(
 
       let sellPackQty = 1;
       let buyPackQty = 1;
+      let sellPackId = '';
+      let sellPrice = 0;
       for (const pack of p.packs) {
+        // A list price for development: cost plus 32%, rounded UP to the next 5 cents.
+        const packPrice = Math.ceil(Math.round(p.cost * pack.qtyBase * 1.32 * 100) / 5) * 5 / 100;
         const packRow = await tx
           .insertInto('product_pack')
           .values({
@@ -370,11 +379,16 @@ export async function seed(
             qty_base: pack.qtyBase,
             is_default_sell: pack.sell ?? false,
             is_default_buy: pack.buy ?? false,
+            sell_price: Number(packPrice.toFixed(2)),
           })
           .returning('id')
           .executeTakeFirstOrThrow();
         packCount += 1;
-        if (pack.sell === true) sellPackQty = pack.qtyBase;
+        if (pack.sell === true) {
+          sellPackQty = pack.qtyBase;
+          sellPackId = packRow.id;
+          sellPrice = Number(packPrice.toFixed(2));
+        }
         if (pack.buy === true) buyPackQty = pack.qtyBase;
         if (pack.barcode !== undefined) {
           await tx
@@ -384,7 +398,7 @@ export async function seed(
           barcodeCount += 1;
         }
       }
-      loaded.push({ id: product.id, sku: p.sku, cost: p.cost, sellPackQty, buyPackQty });
+      loaded.push({ id: product.id, sku: p.sku, cost: p.cost, sellPackQty, buyPackQty, sellPackId, sellPrice });
     }
     log(`  + ${PRODUCTS.length} products, ${packCount} packs, ${barcodeCount} barcodes`);
 
@@ -397,6 +411,7 @@ export async function seed(
       doc_id: string | null; actor_id: string; occurred_at: Date;
     }[] = [];
 
+    const saleMoves: { m: (typeof movements)[number]; product: Loaded; qty: number }[] = [];
     const tradingBranches = BRANCHES.filter((b) => b.kind === 'store').slice(0, 6);
     const warehouseId = branchIds.get('WH') ?? '';
 
@@ -446,20 +461,153 @@ export async function seed(
           const qty = Math.max(1, Math.round(rng() * (available * 0.06)));
           if (sold + qty >= available * 0.7) break;
           sold += qty;
-          movements.push({
+          // A sale carries its cost, like every sale from now on.
+          const saleMovement = {
             event_id: uid(), product_id: product.id, branch_id: branchId,
-            qty_base: -qty, unit_cost: null, reason: 'sale', doc_type: 'SALE',
-            doc_id: uid(), actor_id: cashier,
+            qty_base: -qty, unit_cost: product.cost, reason: 'sale' as const, doc_type: 'SALE',
+            doc_id: null as string | null, actor_id: cashier,
             occurred_at: new Date(now - Math.floor(rng() * 30) * DAY),
-          });
+          };
+          movements.push(saleMovement);
+          saleMoves.push({ m: saleMovement, product, qty });
         }
       }
     }
 
+    // Group each branch's sales that day into baskets of one to four items, give each
+    // basket a trading-hours timestamp, and let the movement point at its receipt.
+    interface Basket { id: string; branchId: string; at: Date; lines: typeof saleMoves }
+    const baskets: Basket[] = [];
+    const byDay = new Map<string, typeof saleMoves>();
+    for (const sm of saleMoves) {
+      const key = `${sm.m.branch_id}|${sm.m.occurred_at.toISOString().slice(0, 10)}`;
+      byDay.set(key, [...(byDay.get(key) ?? []), sm]);
+    }
+    for (const group of byDay.values()) {
+      for (let i = 0; i < group.length; ) {
+        const size = Math.min(group.length - i, 1 + Math.floor(rng() * 4));
+        const lines = group.slice(i, i + size);
+        i += size;
+        const first = lines[0];
+        if (first === undefined) continue;
+        const day = new Date(first.m.occurred_at);
+        day.setUTCHours(0, 0, 0, 0);
+        const at = new Date(day.getTime() + (7 + rng() * 12) * 3_600_000);
+        const id = uid();
+        for (const l of lines) {
+          l.m.doc_id = id;
+          l.m.occurred_at = at;
+        }
+        baskets.push({ id, branchId: first.m.branch_id, at, lines });
+      }
+    }
+
+    const seqByEvent = new Map<string, number>();
     for (let i = 0; i < movements.length; i += 200) {
-      await tx.insertInto('stock_movement').values(movements.slice(i, i + 200)).execute();
+      const rows = await tx
+        .insertInto('stock_movement')
+        .values(movements.slice(i, i + 200))
+        .returning(['seq', 'event_id'])
+        .execute();
+      for (const r of rows) seqByEvent.set(r.event_id, Number(r.seq));
     }
     log(`  + ${movements.length} stock movements`);
+
+    // Receipts, numbered without gaps per branch in the order they happened.
+    const codeOf = new Map([...branchIds.entries()].map(([code, id]) => [id, code]));
+    const counters = new Map<string, number>();
+    const saleRows: object[] = [];
+    const lineRows: object[] = [];
+    const payRows: object[] = [];
+    for (const b of baskets.sort((x, y) => x.at.getTime() - y.at.getTime())) {
+      const n = (counters.get(b.branchId) ?? 0) + 1;
+      counters.set(b.branchId, n);
+
+      let grossCents = 0;
+      b.lines.forEach((l, idx) => {
+        const qtyPacks = l.qty / l.product.sellPackQty;
+        const totalCents = Math.round(qtyPacks * l.product.sellPrice * 100);
+        grossCents += totalCents;
+        lineRows.push({
+          sale_id: b.id, line_no: idx + 1, product_id: l.product.id, pack_id: l.product.sellPackId,
+          qty_packs: qtyPacks, qty_base: l.qty, list_price: l.product.sellPrice, unit_price: l.product.sellPrice,
+          discount: 0, line_total: totalCents / 100, unit_cost: l.product.cost,
+          movement_seq: seqByEvent.get(l.m.event_id) ?? 0,
+        });
+      });
+
+      const r = rng();
+      const type = r < 0.72 ? 'cash' : r < 0.92 ? 'mobile_money' : 'card';
+      const tenderedCents = type === 'cash' ? Math.ceil(grossCents / 100) * 100 : grossCents;
+      saleRows.push({
+        id: b.id, receipt_no: `${codeOf.get(b.branchId) ?? 'BR'}-${String(n).padStart(6, '0')}`,
+        branch_id: b.branchId, terminal_id: null, cash_point_id: null, cashier_id: cashier,
+        occurred_at: b.at, gross_total: grossCents / 100, discount_total: 0, net_total: grossCents / 100,
+        tendered_total: tenderedCents / 100, change_given: (tenderedCents - grossCents) / 100,
+      });
+      payRows.push({
+        sale_id: b.id, payment_type_id: type, amount: grossCents / 100, tendered: tenderedCents / 100, reference: null,
+      });
+    }
+    for (let i = 0; i < saleRows.length; i += 200) {
+      await tx.insertInto('sale').values(saleRows.slice(i, i + 200) as never).execute();
+    }
+    for (let i = 0; i < lineRows.length; i += 200) {
+      await tx.insertInto('sale_line').values(lineRows.slice(i, i + 200) as never).execute();
+    }
+    for (let i = 0; i < payRows.length; i += 200) {
+      await tx.insertInto('sale_payment').values(payRows.slice(i, i + 200) as never).execute();
+    }
+    for (const [branchId, last] of counters) {
+      await tx.insertInto('document_counter').values({ branch_id: branchId, doc_kind: 'SALE', last_no: last }).execute();
+    }
+    log(`  + ${saleRows.length} sales receipts (${lineRows.length} lines)`);
+
+    // -- cash custody ----------------------------------------------------------
+    // One till per terminal, one safe and one petty box per trading branch
+    // (not the warehouse - it does not run a till). Each opens with a
+    // believable starting float so the position screen has real numbers on
+    // it from the first login, the same reasoning as the stock seed.
+    let cashPointCount = 0;
+    let cashMovementCount = 0;
+
+    async function openPoint(
+      branchId: string,
+      kind: 'till' | 'safe' | 'petty' | 'bank',
+      name: string,
+      terminalId: string | null,
+      openingAmount: number,
+    ): Promise<void> {
+      const point = await tx
+        .insertInto('cash_point')
+        .values({ branch_id: branchId, kind, terminal_id: terminalId, name })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await tx
+        .insertInto('cash_movement')
+        .values({
+          event_id: uid(),
+          cash_point_id: point.id,
+          amount: openingAmount,
+          reason: 'opening_balance',
+          actor_id: auditor,
+          occurred_at: new Date(now - 45 * DAY),
+        })
+        .execute();
+      cashPointCount += 1;
+      cashMovementCount += 1;
+    }
+
+    for (const t of terminalIds) {
+      await openPoint(t.branchId, 'till', `${t.branchCode} till`, t.terminalId, 50 + rng() * 30);
+    }
+    for (const b of tradingBranches) {
+      const branchId = branchIds.get(b.code);
+      if (branchId === undefined) continue;
+      await openPoint(branchId, 'safe', `${b.code} safe`, null, 400 + rng() * 300);
+      await openPoint(branchId, 'petty', `${b.code} petty cash`, null, 40 + rng() * 40);
+    }
+    log(`  + ${cashPointCount} cash points, ${cashMovementCount} opening balances`);
 
     // -- the exception queue -------------------------------------------------
     // Real work items, not log lines. Each needs a named human to clear it.
@@ -533,6 +681,8 @@ export async function seed(
       barcodes: barcodeCount,
       movements: movements.length,
       exceptions: exceptions.length,
+      cashPoints: cashPointCount,
+      cashMovements: cashMovementCount,
     };
   });
 }

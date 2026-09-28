@@ -30,6 +30,24 @@ export class NegativeStockBlocked extends DomainError {
 }
 
 /**
+ * Moving more cash out of a custody point than it holds.
+ *
+ * The same shape as NegativeStockBlocked - a resource going negative without
+ * authorisation - but named for what it actually is, so a client debugging a
+ * blocked float issue is not reading "NEGATIVE_STOCK_BLOCKED" for a cash
+ * shortfall.
+ */
+export class InsufficientCash extends DomainError {
+  constructor(available: number, requested: number) {
+    super(
+      'INSUFFICIENT_CASH',
+      `Insufficient cash: ${available} available, ${requested} requested`,
+      { available, requested },
+    );
+  }
+}
+
+/**
  * A barcode that resolves to nothing in the master.
  *
  * The old platform let these pass silently, which is how "under the counter"
@@ -68,5 +86,40 @@ export class ProductMerged extends DomainError {
       `Product ${productId} was merged into ${mergedIntoId} and no longer accepts movements`,
       { productId, mergedIntoId },
     );
+  }
+}
+
+/**
+ * The stock the manager reviewed is not the stock that is there now.
+ *
+ * A reset shows exactly what it is about to zero, and then acts on what is
+ * in the ledger at the instant it runs. If those disagree - a sale, a receipt,
+ * a count landed in between - it refuses and makes the person look again,
+ * because "I approved that" must mean what was on the screen.
+ */
+export class StockResetStale extends DomainError {
+  constructor(expected: number, actual: number) {
+    super(
+      'STOCK_RESET_STALE',
+      `Stock changed while you were reviewing it: you saw ${expected} positions, there are now ${actual}. Nothing was changed - review it again.`,
+      { expected, actual },
+    );
+  }
+}
+
+/** The typed confirmation did not match the branch. */
+export class StockResetNotConfirmed extends DomainError {
+  constructor() {
+    super(
+      'CONFIRMATION_MISMATCH',
+      'The branch code you typed does not match. Nothing was changed.',
+    );
+  }
+}
+
+/** A branch-scoped person reaching for a branch that is not theirs. */
+export class OutsideBranchScope extends DomainError {
+  constructor(branchId: string) {
+    super('OUTSIDE_BRANCH_SCOPE', 'You are not assigned to that branch.', { branchId });
   }
 }

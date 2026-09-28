@@ -24,6 +24,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   // The stock guard fired. Not the caller's fault, not a validation error:
   // it is a conflict with the current state of the ledger.
   NEGATIVE_STOCK_BLOCKED: 409,
+  // The cash equivalent - moving more out of a custody point than it holds.
+  INSUFFICIENT_CASH: 409,
   // Scanned something not in the master. Genuinely absent.
   UNLISTED_BARCODE: 404,
   // Someone tried to mutate history. The method is not allowed, ever.
@@ -34,6 +36,53 @@ const STATUS_BY_CODE: Record<string, number> = {
   PRODUCT_MERGED: 409,
   INVALID_MOVEMENT: 422,
   UNKNOWN_MOVEMENT: 404,
+  // A transfer id that does not exist.
+  TRANSFER_NOT_FOUND: 404,
+  // The transfer exists, but is not in the state the request needs it to be
+  // in - already received, already cancelled. A conflict, not a 404.
+  TRANSFER_NOT_OPEN: 409,
+  // A reset was reviewed against stock that has since moved.
+  STOCK_RESET_STALE: 409,
+  // The typed confirmation did not match the branch.
+  CONFIRMATION_MISMATCH: 422,
+  // Scoped to one branch, reaching for another.
+  OUTSIDE_BRANCH_SCOPE: 403,
+  // The basket or the payments are not a valid sale.
+  INVALID_BASKET: 422,
+  PAYMENT_MISMATCH: 422,
+  // Nothing to charge: the product has no selling price.
+  PRICE_MISSING: 422,
+  // A price or discount away from the list, without the authority to give one.
+  PRICE_OVERRIDE_REQUIRED: 403,
+  // A branch with tills must say which one took the cash.
+  TILL_REQUIRED: 422,
+  // Buying: an order, delivery or payment that is not valid as asked.
+  INVALID_PURCHASE: 422,
+  PURCHASE_ORDER_NOT_OPEN: 409,
+  PAYMENT_ALREADY_VOIDED: 409,
+  PURCHASING_DOCUMENT_NOT_FOUND: 404,
+  PROOF_REJECTED: 422,
+  // Opening stock: not a valid document, or items that already have stock.
+  INVALID_OPENING_STOCK: 422,
+  OPENING_STOCK_NOT_EMPTY: 409,
+  // End of day: a till not counted, or a count that is not a till here.
+  INVALID_DAY_CLOSE: 422,
+  // Customers on credit.
+  INVALID_CUSTOMER: 422,
+  CREDIT_LIMIT_EXCEEDED: 409,
+  // Shifts: not valid as asked; the till needs an open shift; one is already open.
+  INVALID_SHIFT: 422,
+  SHIFT_REQUIRED: 409,
+  SHIFT_ALREADY_OPEN: 409,
+  SHIFTS_STILL_OPEN: 409,
+  // Loyalty: not valid as asked (switched off, not whole points); not enough points.
+  INVALID_LOYALTY: 422,
+  NOT_ENOUGH_POINTS: 409,
+  // Supplier price lists: nothing usable to read; a price would be below its cost.
+  INVALID_PRICE_LIST: 422,
+  PRICE_BELOW_COST: 422,
+  // Item import: e.g. stock in the file but no branch chosen.
+  INVALID_ITEM_IMPORT: 422,
 };
 
 export interface ErrorBody {
@@ -75,6 +124,11 @@ function translatePostgres(error: { code?: string; message?: string }): {
       return {
         status: 409,
         body: { error: { code: 'DUPLICATE', message: 'That record already exists.' } },
+      };
+    case '22003': // numeric_value_out_of_range
+      return {
+        status: 422,
+        body: { error: { code: 'NUMBER_TOO_LARGE', message: 'A number is too large to store. Check for a value in the wrong column.' } },
       };
     case '23503': // foreign_key_violation
       return {

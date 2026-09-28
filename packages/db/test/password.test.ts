@@ -22,13 +22,16 @@ const EMAIL = 'admin@retailops.local';
 describe('password policy', () => {
   it('rejects a banned word with digits appended', () => {
     // The exact failure that got through: the product name plus 1234.
-    for (const weak of ['retail@1234', 'retail1234', 'Retail@1234', 'password12', 'Welcome2026']) {
+    for (const weak of ['example@1234', 'example1234', 'Example@1234', 'password12', 'Welcome2026']) {
       const result = checkPasswordStrength(weak, EMAIL);
       expect(result.ok, `${weak} should be refused`).toBe(false);
     }
   });
 
   it('rejects a password built mostly from the system name', () => {
+    // Deliberately the real banned word, not a placeholder: this test
+    // exercises the rule that bans the product's own name, which is a
+    // configuration value in the policy's source, not a credential.
     expect(checkPasswordStrength('retailops1', EMAIL).ok).toBe(false);
     expect(checkPasswordStrength('myretailops', EMAIL).ok).toBe(false);
   });
@@ -50,10 +53,10 @@ describe('password policy', () => {
 
   it('accepts long unpredictable passwords', () => {
     for (const good of [
-      'Gwelutshena-Ledger-88',
-      'Kana-Mission-2026',
+      'Purple-Tractor-Staple-42',
+      'Correct-Horse-Battery-01',
       'purple tractor mango',
-      'tnu2-HTgt-k2dWtN',
+      'xR4m-QpLk-9WtBcF',
     ]) {
       const result = checkPasswordStrength(good, EMAIL);
       expect(result.ok, `${good} should be accepted`).toBe(true);
@@ -72,9 +75,9 @@ describe('password policy', () => {
 
 describe('password hashing', () => {
   it('verifies a correct password and refuses a wrong one', async () => {
-    const hash = await hashPassword('Gwelutshena-Ledger-88');
-    expect(await verifyPassword('Gwelutshena-Ledger-88', hash)).toBe(true);
-    expect(await verifyPassword('Gwelutshena-Ledger-89', hash)).toBe(false);
+    const hash = await hashPassword('Purple-Tractor-Staple-42');
+    expect(await verifyPassword('Purple-Tractor-Staple-42', hash)).toBe(true);
+    expect(await verifyPassword('Purple-Tractor-Staple-43', hash)).toBe(false);
   });
 
   it('salts, so the same password hashes differently every time', async () => {

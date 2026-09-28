@@ -43,7 +43,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // The session is an httpOnly cookie; without this it is never sent.
     credentials: 'include',
     headers: {
-      'Content-Type': 'application/json',
+      // Only when there is a body. Fastify's JSON parser rejects
+      // Content-Type: application/json on an EMPTY body with its own 400
+      // (FST_ERR_CTP_EMPTY_JSON_BODY) before the route ever runs - sending
+      // this header unconditionally broke every bodiless call: sign-out,
+      // password reset, barcode removal. Found by testing the new endpoints
+      // directly against a running server rather than trusting the build.
+      ...(init?.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(init?.headers ?? {}),
     },
   });
@@ -82,6 +88,18 @@ export interface Branch {
   isActive: boolean;
 }
 
+export type ExportKind = 'items' | 'suppliers' | 'customers' | 'price-lists' | 'staff';
+
+export interface ExportResult {
+  kind: ExportKind;
+  title: string;
+  fileName: string;
+  generatedAt: string;
+  note: string | null;
+  columns: { heading: string; kind: 'text' | 'number' | 'money' | 'date' | 'yesno' }[];
+  rows: (string | number | boolean | null)[][];
+}
+
 export interface Person {
   id: string;
   fullName: string;
@@ -96,6 +114,8 @@ export interface Pack {
   isDefaultSell: boolean;
   isDefaultBuy: boolean;
   barcode: string | null;
+  /** List price for one of this pack; null = not priced yet, so it cannot be sold. */
+  sellPrice: number | null;
 }
 
 export interface Product {
@@ -106,8 +126,912 @@ export interface Product {
   isWeighed: boolean;
   isActive: boolean;
   mergedIntoId: string | null;
+  reviewState: 'approved' | 'pending';
   categoryName: string | null;
   packs: Pack[];
+}
+
+export interface SalesReportParams {
+  from: string;
+  to: string;
+  groupBy?: 'hour' | 'day' | 'week' | 'month';
+  branchId?: string;
+  cashierId?: string;
+  categoryId?: string;
+  productId?: string;
+  paymentTypeId?: string;
+  fromHour?: number;
+  toHour?: number;
+}
+
+/** The trading account, for one period or one slice of it. */
+export interface SalesStatement {
+  receipts: number;
+  units: number;
+  /** Total sales, before discounts. */
+  gross: number;
+  discounts: number;
+  net: number;
+  /** Cost of sales, on lines whose cost was known. */
+  cost: number;
+  grossProfit: number;
+  /** On sales whose cost was known; null when there are none. */
+  marginPercent: number | null;
+  avgBasket: number;
+  /** Sales with no cost on record: kept out of profit and margin, never treated as free. */
+  uncostedNet: number;
+  uncostedLines: number;
+}
+
+export interface SalesReport {
+  timezone: string;
+  period: { from: string; to: string; days: number };
+  previousPeriod: { from: string; to: string };
+  summary: SalesStatement;
+  previous: SalesStatement;
+  series: (SalesStatement & { bucket: string })[];
+  byBranch: (SalesStatement & { branchId: string; branchCode: string; branchName: string })[];
+  byCategory: (SalesStatement & { categoryName: string })[];
+  byProduct: (SalesStatement & { productId: string; sku: string; productName: string })[];
+  byCashier: (SalesStatement & { cashierId: string; cashierName: string })[];
+  byHour: (SalesStatement & { hour: number })[];
+  byPayment: { paymentTypeId: string; name: string; receipts: number; amount: number }[];
+}
+
+export type ItemStatus = 'out_of_stock' | 'not_selling' | 'fast' | 'steady' | 'slow';
+
+export interface ItemRow {
+  productId: string;
+  sku: string;
+  productName: string;
+  categoryName: string;
+  opening: number;
+  received: number;
+  transfersIn: number;
+  transfersOut: number;
+  adjustments: number;
+  sold: number;
+  closing: number;
+  sellThroughPercent: number | null;
+  perDay: number;
+  perWeek: number;
+  daysOfCover: number | null;
+  lastSold: string | null;
+  net: number;
+  cost: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  status: ItemStatus;
+}
+
+export interface ItemReport {
+  timezone: string;
+  period: { from: string; to: string; days: number };
+  summary: {
+    items: number;
+    itemsSold: number;
+    opening: number;
+    received: number;
+    sold: number;
+    closing: number;
+    sellThroughPercent: number | null;
+    outOfStock: number;
+    notSelling: number;
+    fast: number;
+    steady: number;
+    slow: number;
+  };
+  items: ItemRow[];
+}
+
+export interface ItemHistory {
+  product: { productId: string; sku: string; productName: string; categoryName: string | null };
+  timezone: string;
+  opening: number;
+  series: { bucket: string; received: number; sold: number; other: number; closing: number }[];
+  totals: { received: number; sold: number; net: number; cost: number; grossProfit: number };
+}
+
+// -- buying: suppliers, orders, goods received, payments -------------------------------------------
+
+export type SupplierTerms = 'prepaid' | 'cash_on_delivery' | 'credit';
+export type PaymentTiming = 'prepaid' | 'on_delivery' | 'after_delivery' | 'on_account';
+export type PoStatus = 'ordered' | 'part_received' | 'received' | 'closed' | 'cancelled';
+
+export interface SupplierRow {
+  id: string;
+  code: string;
+  name: string;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  terms: SupplierTerms;
+  creditDays: number | null;
+  isActive: boolean;
+  /** Null when the viewer is tied to a branch: what the group owes is group-wide finance. */
+  receivedCost: number | null;
+  paid: number | null;
+  balance: number | null;
+  lastDelivery: string | null;
+  openOrders: number;
+}
+
+export interface SupplierInput {
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  tin?: string | null;
+  terms: SupplierTerms;
+  creditDays?: number | null;
+  notes?: string | null;
+}
+
+export interface StatementLine {
+  at: string;
+  kind: 'received' | 'payment' | 'void' | 'return';
+  ref: string;
+  description: string;
+  id: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  timing?: PaymentTiming;
+}
+
+export interface AgeingItem {
+  grnId: string;
+  grnNo: string;
+  day: string;
+  dueDay: string;
+  amount: number;
+  outstanding: number;
+  daysOverdue: number;
+}
+
+export interface SupplierAccount {
+  balance: number;
+  receivedCost: number;
+  returnedCost: number;
+  paid: number;
+  ageing: {
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+    total: number;
+    credit: number;
+    items: AgeingItem[];
+  };
+  statement: StatementLine[];
+}
+
+export interface SupplierDetail {
+  supplier: {
+    id: string;
+    code: string;
+    name: string;
+    contactPerson: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    tin: string | null;
+    terms: SupplierTerms;
+    creditDays: number | null;
+    notes: string | null;
+    isActive: boolean;
+  };
+  financeHidden: boolean;
+  account: SupplierAccount | null;
+}
+
+export interface OrderSummary {
+  id: string;
+  poNo: string;
+  status: PoStatus;
+  orderedAt: string;
+  expectedDate: string | null;
+  terms: SupplierTerms;
+  creditDays: number | null;
+  supplier: { id: string; name: string; code: string };
+  branch: { id: string; name: string; code: string };
+  orderedByName: string;
+  lineCount: number;
+  ordered: number;
+  received: number;
+  paid: number | null;
+  paymentStatus: 'unpaid' | 'part_paid' | 'paid' | null;
+}
+
+export interface OrderLine {
+  id: string;
+  lineNo: number;
+  productId: string;
+  sku: string;
+  name: string;
+  packId: string;
+  packLabel: string;
+  qtyPacks: number;
+  qtyBase: number;
+  unitCost: number;
+  lineTotal: number;
+  receivedPacks: number;
+  outstandingPacks: number;
+}
+
+export interface OrderPayment {
+  id: string;
+  paymentNo: string;
+  amount: number;
+  paidAt: string;
+  reference: string | null;
+  method: string;
+  voidedAt: string | null;
+  proofs: number;
+  timing: PaymentTiming;
+}
+
+export interface OrderDetail extends OrderSummary {
+  notes: string | null;
+  cancelled: { at: string; reason: string } | null;
+  closed: { at: string; note: string } | null;
+  lines: OrderLine[];
+  receipts: { id: string; grnNo: string; receivedAt: string; totalCost: number; invoiceNo: string | null; receivedByName: string }[];
+  payments: OrderPayment[];
+  financeHidden: boolean;
+}
+
+export interface OrderInput {
+  supplierId: string;
+  branchId: string;
+  expectedDate?: string | null;
+  terms?: SupplierTerms;
+  creditDays?: number | null;
+  notes?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost: number }[];
+}
+
+export interface GrnInput {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  poId?: string | null;
+  supplierInvoiceNo?: string | null;
+  invoiceDate?: string | null;
+  invoiceTotal?: number | null;
+  notes?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost: number; poLineId?: string | null }[];
+}
+
+export interface GrnSummary {
+  id: string;
+  grnNo: string;
+  receivedAt: string;
+  totalCost: number;
+  invoiceNo: string | null;
+  invoiceDate: string | null;
+  invoiceTotal: number | null;
+  supplierId: string;
+  supplierName: string;
+  branchId: string;
+  branchName: string;
+  poNo: string | null;
+  receivedByName: string;
+  lineCount: number;
+  paid: number | null;
+}
+
+export interface GrnDetail {
+  id: string;
+  grnNo: string;
+  receivedAt: string;
+  totalCost: number;
+  invoiceNo: string | null;
+  invoiceDate: string | null;
+  invoiceTotal: number | null;
+  notes: string | null;
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string;
+  branchId: string;
+  branchName: string;
+  branchCode: string;
+  poId: string | null;
+  poNo: string | null;
+  receivedByName: string;
+  lines: {
+    lineNo: number;
+    productId: string;
+    sku: string;
+    name: string;
+    packLabel: string;
+    qtyPacks: number;
+    qtyBase: number;
+    unitCost: number;
+    lineTotal: number;
+    orderedUnitCost: number | null;
+    orderedPacks: number | null;
+    id: string;
+    packId: string;
+    /** Base units already sent back to the supplier against this line. */
+    returnedBase: number;
+  }[];
+}
+
+export interface SupplierCashPoint {
+  id: string;
+  name: string;
+  kind: 'till' | 'safe' | 'petty' | 'bank';
+  branchId: string;
+  branchName: string;
+  amount: number;
+}
+
+export interface ReturnInput {
+  id: string;
+  supplierId: string;
+  branchId: string;
+  grnId?: string | null;
+  reason: string;
+  creditNoteNo?: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitCost?: number | null; grnLineId?: string | null }[];
+}
+
+export interface ReturnSummary {
+  id: string;
+  prnNo: string;
+  returnedAt: string;
+  totalCost: number;
+  reason: string;
+  creditNoteNo: string | null;
+  supplierId: string;
+  supplierName: string;
+  branchId: string;
+  branchName: string;
+  grnNo: string | null;
+  returnedByName: string;
+  lineCount: number;
+}
+
+export interface ReturnDetail extends Omit<ReturnSummary, 'lineCount'> {
+  supplierCode: string;
+  grnId: string | null;
+  lines: { lineNo: number; productId: string; sku: string; name: string; packLabel: string; qtyPacks: number; qtyBase: number; unitCost: number; lineTotal: number }[];
+}
+
+export interface PaymentRow {
+  id: string;
+  paymentNo: string;
+  amount: number;
+  paidAt: string;
+  reference: string | null;
+  methodId: string;
+  method: string;
+  note: string | null;
+  supplierId: string;
+  supplierName: string;
+  poNo: string | null;
+  grnNo: string | null;
+  recordedByName: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  proofs: number;
+  timing: PaymentTiming;
+}
+
+export interface PaymentDetail extends Omit<PaymentRow, 'methodId' | 'timing' | 'proofs'> {
+  poId: string | null;
+  grnId: string | null;
+  recordedAt: string;
+  voidedByName: string | null;
+  cashPointName: string | null;
+  cashPointBranch: string | null;
+  proofs: { id: string; fileName: string; contentType: string; sizeBytes: number; sha256: string; uploadedAt: string; uploadedByName: string }[];
+}
+
+export interface PaymentInput {
+  id: string;
+  supplierId: string;
+  amount: number;
+  paymentTypeId: string;
+  reference?: string | null;
+  paidAt?: string;
+  poId?: string | null;
+  grnId?: string | null;
+  note?: string | null;
+  cashPointId?: string | null;
+}
+
+export interface Payables {
+  asOf: string;
+  totals: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number; total: number; credit: number };
+  suppliers: {
+    supplierId: string;
+    code: string;
+    name: string;
+    terms: SupplierTerms;
+    balance: number;
+    owed: number;
+    credit: number;
+    overdue: number;
+    oldestOverdueDays: number;
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  }[];
+}
+
+export interface OpeningMatch {
+  productId: string;
+  sku: string;
+  name: string;
+  packId: string;
+  packs: { id: string; label: string; qtyBase: number }[];
+  onHand: number;
+}
+
+export interface OpeningDocSummary {
+  id: string;
+  docNo: string;
+  enteredAt: string;
+  totalCost: number;
+  note: string | null;
+  branchId: string;
+  branchName: string;
+  enteredByName: string;
+  lines: number;
+  linesWithoutCost: number;
+  units: number;
+}
+
+export interface OpeningDoc {
+  id: string;
+  docNo: string;
+  enteredAt: string;
+  totalCost: number;
+  note: string | null;
+  branchId: string;
+  branchName: string;
+  branchCode: string;
+  enteredByName: string;
+  lines: { lineNo: number; productId: string; sku: string; name: string; packLabel: string; qtyPacks: number; qtyBase: number; unitCost: number | null; lineTotal: number | null }[];
+}
+
+export interface DayFigures {
+  fromReceiptNo: number;
+  toReceiptNo: number;
+  firstReceipt: string | null;
+  lastReceipt: string | null;
+  receipts: number;
+  gross: number;
+  discounts: number;
+  net: number;
+  cost: number;
+  grossProfit: number;
+  uncostedNet: number;
+  cashTaken: number;
+  byPayment: { paymentTypeId: string; name: string; receipts: number; amount: number }[];
+  byCashier: { cashierId: string; name: string; receipts: number; net: number }[];
+}
+
+export interface DayPreview {
+  lastClose: { id: string; closeNo: string; at: string } | null;
+  since: string | null;
+  figures: DayFigures;
+  tills: { id: string; name: string }[];
+}
+
+export interface ZSummary {
+  id: string;
+  closeNo: string;
+  businessDay: string;
+  periodFrom: string | null;
+  periodTo: string;
+  receipts: number;
+  net: number;
+  cashExpected: number;
+  cashCounted: number;
+  cashVariance: number;
+  branchId: string;
+  branchName: string;
+  closedByName: string;
+}
+
+export interface ZReport extends ZSummary {
+  fromReceiptNo: number;
+  toReceiptNo: number;
+  note: string | null;
+  gross: number;
+  discounts: number;
+  cost: number;
+  branchCode: string;
+  detail: {
+    figures: DayFigures;
+    tills: { id: string; name: string; expected: number; counted: number; variance: number }[];
+    exceptions: { kind: string; count: number }[];
+    previousClose: { id: string; closeNo: string } | null;
+  };
+}
+
+export interface CustomerRow {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  creditLimit: number;
+  creditDays: number;
+  isActive: boolean;
+  charged: number;
+  paid: number;
+  balance: number;
+  available: number;
+  lastSale: string | null;
+}
+
+export interface CustomerLookup {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  creditLimit: number;
+  balance: number;
+  available: number;
+  /** Loyalty points held. */
+  points: number;
+}
+
+export type PriceRuleInput =
+  | { mode: 'keep_margin'; roundTo: number }
+  | { mode: 'markup'; markupPercent: number; roundTo: number }
+  | { mode: 'costs_only' };
+
+/** As stored on an applied list. */
+export interface PriceRuleStored {
+  mode: 'keep_margin' | 'markup' | 'costs_only';
+  markupPercent?: number;
+  roundToCents?: number;
+}
+
+export interface PriceListPreview {
+  supplier: { id: string; name: string };
+  matched: number;
+  unmatched: number;
+  lines: {
+    row: number;
+    code: string;
+    description: string;
+    cost: number | null;
+    problem: string | null;
+    suggestions: { packId: string; name: string; sku: string; packLabel: string; score: number }[];
+    match: null | {
+      packId: string;
+      productId: string;
+      name: string;
+      sku: string;
+      packLabel: string;
+      by: string;
+      oldCost: number | null;
+      oldCostSource: 'supplier' | 'average' | null;
+      currentSell: number | null;
+      suggestedSell: number | null;
+      oldMargin: number | null;
+      newMargin: number | null;
+      costChangePercent: number | null;
+    };
+  }[];
+}
+
+export interface PriceListSummary {
+  id: string;
+  listNo: string;
+  supplierId: string;
+  supplierName: string;
+  lines: number;
+  pricesChanged: number;
+  rule: PriceRuleStored;
+  note: string | null;
+  createdAt: string;
+  byName: string;
+}
+
+export interface PriceListDetail extends PriceListSummary {
+  items: {
+    lineNo: number;
+    packId: string;
+    productId: string;
+    name: string;
+    sku: string;
+    packLabel: string;
+    supplierCode: string | null;
+    cost: number;
+    oldCost: number | null;
+    oldSell: number | null;
+    newSell: number | null;
+  }[];
+}
+
+export interface SupplierItem {
+  packId: string;
+  productId: string;
+  name: string;
+  sku: string;
+  packLabel: string;
+  supplierCode: string | null;
+  cost: number;
+  sellPrice: number | null;
+  updatedAt: string;
+  listNo: string;
+  listId: string;
+}
+
+export interface LoyaltyRules {
+  enabled: boolean;
+  pointsPerDollar: number;
+  /** What one point is worth at the till, in dollars. */
+  pointValue: number;
+}
+
+export interface CustomerPoints {
+  enabled: boolean;
+  points: number;
+  worth: number;
+  earned: number;
+  redeemed: number;
+  adjusted: number;
+  movements: {
+    seq: number;
+    points: number;
+    reason: 'earn' | 'redeem' | 'adjust';
+    note: string | null;
+    at: string;
+    saleId: string | null;
+    receiptNo: string | null;
+    branchName: string;
+    byName: string;
+  }[];
+}
+
+export interface CustomerInput {
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  idNumber?: string | null;
+  creditLimit: number;
+  creditDays: number;
+  notes?: string | null;
+}
+
+export interface CustomerDetail {
+  customer: {
+    id: string;
+    code: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    idNumber: string | null;
+    creditLimit: number;
+    creditDays: number;
+    notes: string | null;
+    isActive: boolean;
+  };
+  available: number;
+  account: {
+    balance: number;
+    charged: number;
+    paid: number;
+    ageing: {
+      buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+      total: number;
+      credit: number;
+      items: { saleId: string; receiptNo: string; day: string; dueDay: string; amount: number; outstanding: number; daysOverdue: number }[];
+    };
+    statement: { at: string; kind: 'sale' | 'payment' | 'void'; ref: string; description: string; id: string; debit: number; credit: number; balance: number }[];
+  };
+}
+
+export interface Debtors {
+  asOf: string;
+  totals: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number; total: number; credit: number };
+  customers: {
+    customerId: string;
+    code: string;
+    name: string;
+    phone: string | null;
+    creditLimit: number;
+    owed: number;
+    credit: number;
+    overdue: number;
+    oldestOverdueDays: number;
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  }[];
+}
+
+export interface PaymentType {
+  id: string;
+  name: string;
+  isCash: boolean;
+  atTill: boolean;
+  forSuppliers: boolean;
+}
+
+export interface CurrentShift {
+  required: boolean;
+  shift: {
+    id: string;
+    shiftNo: string;
+    branchId: string;
+    branchName: string;
+    tillId: string;
+    tillName: string;
+    openedAt: string;
+    float: number;
+    receipts: number;
+  } | null;
+}
+
+export interface ShiftTill {
+  id: string;
+  name: string;
+  shiftId: string | null;
+  shiftNo: string | null;
+  cashierId: string | null;
+  cashierName: string | null;
+  openedAt: string | null;
+}
+
+export interface ShiftRow {
+  id: string;
+  shiftNo: string;
+  branchId: string;
+  branchName: string;
+  tillName: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt: string | null;
+  float: number;
+  openingVariance: number;
+  closingExpected: number | null;
+  closingCounted: number | null;
+  closingVariance: number | null;
+  receipts: number;
+  net: number;
+}
+
+interface Counted {
+  expected: number;
+  counted: number;
+  variance: number;
+}
+
+export interface ShiftReport {
+  id: string;
+  shiftNo: string;
+  branchId: string;
+  branchName: string;
+  tillId: string;
+  tillName: string;
+  cashierId: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt: string | null;
+  closedByName: string | null;
+  opening: Counted;
+  closing: Counted | null;
+  sales: { receipts: number; net: number; firstReceipt: string | null; lastReceipt: string | null };
+  byPayment: { name: string; receipts: number; amount: number }[];
+  cash: { opening: number; lines: { reason: string; amount: number }[]; other: number; expected: number };
+}
+
+export interface Till {
+  id: string;
+  name: string;
+  terminalId: string | null;
+}
+
+export interface CheckoutBody {
+  saleId: string;
+  branchId: string;
+  cashPointId: string | null;
+  terminalId: string | null;
+  lines: { productId: string; packId: string; qtyPacks: number; unitPrice?: number; discount?: number }[];
+  payments: { paymentTypeId: string; amount: number; tendered?: number; reference?: string | null }[];
+  overrideNegative: boolean;
+  /** A named customer; required when any of the sale is paid on account. */
+  customerId?: string | null;
+}
+
+export interface ReceiptLine {
+  lineNo: number;
+  productId: string;
+  sku: string;
+  name: string;
+  packLabel: string;
+  qtyPacks: number;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+}
+
+export interface Receipt {
+  id: string;
+  receiptNo: string;
+  occurredAt: string;
+  branch: { id: string; code: string; name: string };
+  cashier: { id: string; name: string };
+  till: string | null;
+  customer: { id: string; code: string; name: string } | null;
+  loyalty: { earned: number; spent: number; balance: number } | null;
+  currency: string;
+  lines: ReceiptLine[];
+  gross: number;
+  discount: number;
+  net: number;
+  tendered: number;
+  change: number;
+  payments: { type: string; isCash: boolean; amount: number; tendered: number; reference: string | null }[];
+  business: { name: string; address: string; phone: string; tin: string; footer: string; widthMm: number };
+}
+
+export interface SaleSummary {
+  id: string;
+  receiptNo: string;
+  occurredAt: string;
+  branchCode: string;
+  branchName: string;
+  cashierName: string;
+  net: number;
+  discount: number;
+  itemCount: number;
+  paidBy: string | null;
+}
+
+export interface PriceRow {
+  packId: string;
+  packLabel: string;
+  qtyBase: number;
+  sellPrice: number | null;
+  productId: string;
+  sku: string;
+  name: string;
+  categoryName: string | null;
+  barcode: string | null;
+  costPerPack: number | null;
+}
+
+export interface PriceList {
+  items: PriceRow[];
+  /** Items matching the filters (drives paging). */
+  total: number;
+  /** Every active item, filtered or not. */
+  catalogue: number;
+  unpriced: number;
+  limit: number;
+  offset: number;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+export interface NewPackInput {
+  label: string;
+  qtyBase: number;
+  isDefaultSell?: boolean;
+  isDefaultBuy?: boolean;
+  barcode?: string;
+  sellPrice?: number;
+}
+
+export interface NewProductInput {
+  sku: string;
+  name: string;
+  baseUom: string;
+  categoryId: string | null;
+  isWeighed: boolean;
+  packs: NewPackInput[];
+  /** Seen the look-alike items the server named, and this is a different item. */
+  confirmSimilar?: boolean;
 }
 
 export interface StockLine {
@@ -142,7 +1066,14 @@ export type ExceptionKind =
   | 'transit_loss'
   | 'cash_variance'
   | 'price_override'
-  | 'void_after_tender';
+  | 'void_after_tender'
+  | 'unreviewed_product'
+  | 'stock_reset'
+  | 'opening_stock'
+  | 'credit_limit_change'
+  | 'shift_variance'
+  | 'loyalty_adjustment'
+  | 'access_granted';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -200,6 +1131,10 @@ export interface Dashboard {
   controls: { backdatedMovements: number; negativeStockLines: number };
   master: { products: number; withoutPack: number; withoutBarcode: number; merged: number };
   activity: { day: string; unitsSold: number; unitsReceived: number }[];
+  /** The last 30 days against the 30 before them. */
+  trading: { soldNow: number; soldBefore: number; receivedNow: number; receivedBefore: number };
+  topProducts: { productId: string; productName: string; sku: string; unitsSold: number }[];
+  inventoryByCategory: { categoryName: string; value: number }[];
 }
 
 export interface CurrentUser {
@@ -210,6 +1145,208 @@ export interface CurrentUser {
   permissions: string[];
   branchIds: string[];
   mustChangePassword: boolean;
+}
+
+export type CashPointKind = 'till' | 'safe' | 'petty' | 'bank';
+
+export interface CashPointRef {
+  id: string;
+  branchId: string;
+  branchCode: string;
+  kind: CashPointKind;
+  name: string;
+  terminalId: string | null;
+}
+
+export interface CashPointPosition extends CashPointRef {
+  amount: number;
+}
+
+export interface CashLedgerRow {
+  seq: number;
+  amount: number;
+  reason: string;
+  docType: string | null;
+  occurredAt: string;
+  cashPointName: string;
+  actorName: string | null;
+}
+
+export type TransferState = 'dispatched' | 'received' | 'cancelled';
+
+export interface TransferSummary {
+  id: string;
+  reference: string;
+  state: TransferState;
+  originBranchCode: string;
+  destinationBranchCode: string;
+  dispatchedAt: string;
+  lineCount: number;
+}
+
+export interface TransferLine {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  qtyDispatched: number;
+  qtyReceived: number | null;
+  unitCost: number | null;
+  variance: number | null;
+  valueImpact: number | null;
+}
+
+export interface TransferDetail {
+  id: string;
+  reference: string;
+  state: TransferState;
+  originBranchId: string;
+  originBranchCode: string;
+  destinationBranchId: string;
+  destinationBranchCode: string;
+  dispatchedBy: string;
+  dispatchedByName: string | null;
+  dispatchedAt: string;
+  receivedBy: string | null;
+  receivedByName: string | null;
+  receivedAt: string | null;
+  cancelledAt: string | null;
+  notes: string | null;
+  lines: TransferLine[];
+}
+
+/** The seven figures every report cut carries, however it is grouped. */
+export interface ReportFigures {
+  unitsSold: number;
+  unitsReceived: number;
+  costReceived: number;
+  unitsTransferredOut: number;
+  unitsTransferredIn: number;
+  unitsWrittenOff: number;
+  unitsAdjustedNet: number;
+  /** Stock zeroed by a branch reset (mostly negative). */
+  unitsResetNet: number;
+}
+
+export interface ReportBucket extends ReportFigures {
+  bucket: string;
+}
+
+export interface ReportProductRow extends ReportFigures {
+  productId: string;
+  sku: string;
+  productName: string;
+}
+
+export interface MovementReport {
+  from: string;
+  to: string;
+  groupBy: 'day' | 'week' | 'month' | 'year';
+  summary: ReportFigures;
+  buckets: ReportBucket[];
+  byProduct: ReportProductRow[];
+  /** Ranked by units sold, unlike byProduct, which is ranked by total activity. */
+  topSellers: ReportProductRow[];
+  byBranch: (ReportFigures & { branchId: string; branchName: string })[];
+  byCategory: (ReportFigures & { categoryName: string })[];
+  /** ISO weekday: 1 = Monday .. 7 = Sunday. Only weekdays with activity appear. */
+  byWeekday: (ReportFigures & { weekday: number })[];
+}
+
+/** One entry on a bin card: a receipt or an issue, with the balance after it. */
+export interface StockLedgerRow {
+  seq: number;
+  occurredAt: string;
+  recordedAt: string;
+  reason: string;
+  docType: string | null;
+  /** The number on the paper document, where there is one (a transfer's dispatch note). */
+  reference: string | null;
+  qtyIn: number;
+  qtyOut: number;
+  balance: number;
+  unitCost: number | null;
+  actorName: string | null;
+  lateHours: number;
+}
+
+/** A stores ledger for one product at one branch over a period. */
+export interface StockLedger {
+  branch: { id: string; code: string; name: string };
+  product: { id: string; sku: string; name: string; baseUom: string };
+  from: string;
+  to: string;
+  opening: number;
+  receipts: number;
+  issues: number;
+  closing: number;
+  rows: StockLedgerRow[];
+  onHandNow: number;
+  /** null when the period ended in the past: nothing current to compare it to. */
+  agreesToStockOnHand: boolean | null;
+}
+
+export interface ReconciliationLine {
+  productId: string;
+  sku: string;
+  productName: string;
+  baseUom: string;
+  opening: number;
+  /** Signed: what came in is positive, what went out is negative. */
+  purchases: number;
+  transfersIn: number;
+  transfersOut: number;
+  sales: number;
+  /** Stock introduced when trading began here. A movement, not a balance, and not an adjustment. */
+  openingStock: number;
+  adjustments: number;
+  closing: number;
+  onHand: number;
+  balanced: boolean;
+  agreesToStockOnHand: boolean | null;
+}
+
+export interface StockReconciliation {
+  branch: { id: string; code: string; name: string };
+  from: string;
+  to: string;
+  reachesToday: boolean;
+  lines: ReconciliationLine[];
+  limit: number;
+  offset: number;
+  allBalanced: boolean;
+  allAgreeToStockOnHand: boolean | null;
+}
+
+/** What a branch reset is about to zero, read at the moment it is asked for. */
+export interface ResetPreview {
+  branchId: string;
+  branchCode: string;
+  branchName: string;
+  /** Positions that will be set to zero. */
+  resettable: number;
+  unitsOnHand: number;
+  /** Units the ledger says are impossible, as a positive count. */
+  unitsBelowZero: number;
+  valueAtCost: number;
+  withoutCost: number;
+  /** Non-zero positions on merged products, which accept no movements and are left out. */
+  skippedMerged: number;
+}
+
+export interface ResetResult extends ResetPreview {
+  /** Null when there was nothing to zero. */
+  docId: string | null;
+  exceptionId: string | null;
+}
+
+export interface SettingRow {
+  key: string;
+  value: string;
+  label: string;
+  description: string | null;
+  updatedAt: string | null;
+  updatedByName: string | null;
 }
 
 export interface UserRow {
@@ -224,6 +1361,116 @@ export interface UserRow {
   lockedUntil: string | null;
   canSignIn: boolean;
   roles: { roleId: string; branchId: string | null; branchCode: string | null }[];
+  /** Access set for this person beyond (grant) or short of (revoke) their roles. */
+  overrides: { permissionId: string; effect: 'grant' | 'revoke' }[];
+}
+
+export interface ImportPackPreview {
+  row: number;
+  label: string;
+  qtyBase: number;
+  barcode: string | null;
+  sellPrice: number | null;
+  isDefaultSell: boolean;
+  isDefaultBuy: boolean;
+  cost: number | null;
+  stock: number | null;
+}
+
+export interface ItemImportCheck {
+  items: {
+    key: string;
+    sku: string | null;
+    name: string;
+    category: string | null;
+    baseUom: string;
+    isWeighed: boolean;
+    rows: number[];
+    packs: ImportPackPreview[];
+    status: 'new' | 'exists' | 'similar';
+    reason: string | null;
+    similarTo: { name: string; sku: string | null; score: number; row: number | null }[];
+  }[];
+  problems: { row: number; column: string | null; message: string }[];
+  columns: { heading: string; field: string | null }[];
+  newCategories: string[];
+  summary: { rows: number; newItems: number; newPacks: number; existing: number; similar: number; problemRows: number; withStock: number };
+  mayPrice: boolean;
+  mayOpenStock: boolean;
+}
+
+export interface RecordImportCheck {
+  records: {
+    record: Record<string, unknown> & { row: number; name: string };
+    key: string;
+    status: 'new' | 'exists' | 'similar';
+    reason: string | null;
+    similarTo: { name: string; code: string; score: number; row: number | null }[];
+  }[];
+  problems: { row: number; column: string | null; message: string }[];
+  columns: { heading: string; field: string | null }[];
+  summary: { rows: number; new: number; existing: number; similar: number; problemRows: number };
+}
+
+export interface RecordImportResult {
+  id: string;
+  created: number;
+  existing: number;
+  similarSkipped: number;
+  problemRows: number;
+  replayed: boolean;
+  report: null | {
+    created: { name: string; code: string; row: number }[];
+    existing: { name: string; row: number; reason: string }[];
+    similarSkipped: { name: string; row: number; reason: string }[];
+  };
+}
+
+export interface ItemImportResult {
+  id: string;
+  importNo: string;
+  itemsCreated: number;
+  packsCreated: number;
+  categoriesCreated: number;
+  rowsSkipped: number;
+  similarSkipped: number;
+  pricesSet: boolean;
+  openingDocNo: string | null;
+  replayed: boolean;
+  report: null | {
+    created: { name: string; sku: string; row: number; stock: number | null }[];
+    existing: { name: string; row: number; reason: string }[];
+    similarSkipped: { name: string; row: number; reason: string }[];
+    problemRows: number;
+  };
+}
+
+export interface AuditEntry {
+  seq: number;
+  at: string;
+  recordedAt: string;
+  action: string;
+  actorId: string | null;
+  actorName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  entityName: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+export interface UserAccess {
+  person: { id: string; fullName: string };
+  roles: { roleId: string; branchName: string | null }[];
+  permissions: {
+    id: string;
+    description: string;
+    fromRoles: string[];
+    override: null | { effect: 'grant' | 'revoke'; note: string | null; setAt: string; setByName: string };
+    effective: boolean;
+  }[];
 }
 
 // -- endpoints ---------------------------------------------------------------
@@ -263,15 +1510,101 @@ export const api = {
   updateUser: (id: string, body: { isActive?: boolean; roleIds?: string[] }) =>
     request<{ ok: true }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
+  checkItemImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<ItemImportCheck>('/api/products/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importItems: (body: {
+    id: string;
+    fileName: string | null;
+    headings: string[];
+    rows: Record<string, string>[];
+    confirmSimilar: string[];
+    stockBranchId: string | null;
+  }) =>
+    request<ItemImportResult>('/api/products/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  checkCustomerImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<RecordImportCheck>('/api/customers/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importCustomers: (body: { id: string; fileName: string | null; headings: string[]; rows: Record<string, string>[]; confirmSimilar: string[] }) =>
+    request<RecordImportResult>('/api/customers/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  checkSupplierImport: (body: { headings: string[]; rows: Record<string, string>[] }) =>
+    request<RecordImportCheck>('/api/suppliers/import/check', { method: 'POST', body: JSON.stringify(body) }),
+
+  importSuppliers: (body: { id: string; fileName: string | null; headings: string[]; rows: Record<string, string>[]; confirmSimilar: string[] }) =>
+    request<RecordImportResult>('/api/suppliers/import', { method: 'POST', body: JSON.stringify(body) }),
+
+  itemImports: () =>
+    request<{
+      items: {
+        id: string;
+        importNo: string;
+        fileName: string | null;
+        itemsCreated: number;
+        packsCreated: number;
+        categoriesCreated: number;
+        rowsSkipped: number;
+        pricesSet: boolean;
+        createdAt: string;
+        byName: string;
+      }[];
+    }>('/api/products/imports'),
+
+  /** A whole list for Excel or CSV. Needs data.export; recorded in the audit log. */
+  exportRecords: (kind: ExportKind, format: 'xlsx' | 'csv') => request<ExportResult>(`/api/exports/${kind}?format=${format}`),
+
+  audit: (params: {
+    from?: string;
+    to?: string;
+    actions?: string;
+    actorId?: string;
+    branchId?: string;
+    entityType?: string;
+    entityId?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => request<{ items: AuditEntry[]; total: number; limit: number; offset: number }>(`/api/audit${qs({ ...params })}`),
+
+  auditFacets: () =>
+    request<{ actions: { action: string; n: number }[]; people: { id: string; name: string; n: number }[] }>('/api/audit/facets'),
+
+  userAccess: (id: string) => request<UserAccess>(`/api/users/${id}/access`),
+
+  setUserAccess: (id: string, permission: string, body: { effect: 'grant' | 'revoke' | 'role'; note: string | null }) =>
+    request<{ permission: string; access: string }>(`/api/users/${id}/access/${encodeURIComponent(permission)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   resetPassword: (id: string) =>
     request<{ temporaryPassword: string }>(`/api/users/${id}/reset-password`, { method: 'POST' }),
 
   dashboard: () => request<Dashboard>('/api/dashboard'),
 
-  branches: () => request<Branch[]>('/api/branches'),
+  branches: (params: { includeInactive?: boolean } = {}) =>
+    request<Branch[]>(`/api/branches${qs(params)}`),
+
+  branchCapacity: () => request<{ activeCount: number; limit: number }>('/api/branches/capacity'),
+
+  createBranch: (body: { code: string; name: string; kind: 'store' | 'warehouse' }) =>
+    request<Branch>('/api/branches', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateBranch: (
+    id: string,
+    body: Partial<{ code: string; name: string; kind: 'store' | 'warehouse'; isActive: boolean }>,
+  ) => request<Branch>(`/api/branches/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   people: () => request<Person[]>('/api/people'),
 
-  products: (params: { search?: string; limit?: number; offset?: number } = {}) =>
+  products: (
+    params: {
+      search?: string;
+      reviewState?: 'approved' | 'pending';
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) =>
     request<{ items: Product[]; total: number; limit: number; offset: number }>(
       `/api/products${qs(params)}`,
     ),
@@ -279,7 +1612,91 @@ export const api = {
   product: (id: string) =>
     request<Product & { stock: StockLine[]; movements: Movement[] }>(`/api/products/${id}`),
 
-  stock: (params: { branchId?: string; search?: string; negativeOnly?: boolean; limit?: number } = {}) =>
+  categories: () => request<Category[]>('/api/categories'),
+
+  createProduct: (body: NewProductInput) =>
+    request<{ id: string; sku: string; name: string }>('/api/products', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateProduct: (
+    id: string,
+    body: Partial<{
+      sku: string;
+      name: string;
+      baseUom: string;
+      categoryId: string | null;
+      isWeighed: boolean;
+      isActive: boolean;
+    }>,
+  ) => request<unknown>(`/api/products/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /**
+   * A cashier or receiver adds a product on the fly, mid-transaction. It
+   * lands in review, not the trusted master - the response is enough to
+   * finish the sale immediately (productId + packId, straight into `sell`).
+   */
+  quickAddProduct: (body: {
+    name: string;
+    sellPrice?: number;
+    barcode?: string;
+    branchId: string;
+    terminalId?: string | null;
+  }) =>
+    request<{
+      id: string;
+      sku: string;
+      name: string;
+      packId: string;
+      qtyBase: number;
+      barcode: string | null;
+      exceptionId: string;
+    }>('/api/products/quick-add', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Accept a pending product into the master under the right category. */
+  approveProduct: (
+    id: string,
+    body: Partial<{
+      categoryId: string | null;
+      name: string;
+      sku: string;
+      baseUom: string;
+      isWeighed: boolean;
+      note: string;
+    }>,
+  ) => request<Product>(`/api/products/${id}/approve`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** A pending product turns out to be a duplicate; point it at the real one. */
+  mergeProduct: (id: string, body: { targetProductId: string; note?: string }) =>
+    request<Product>(`/api/products/${id}/merge`, { method: 'POST', body: JSON.stringify(body) }),
+
+  addPack: (productId: string, body: NewPackInput) =>
+    request<Pack>(`/api/products/${productId}/packs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updatePack: (
+    productId: string,
+    packId: string,
+    body: Partial<{ label: string; qtyBase: number; isDefaultSell: boolean; isDefaultBuy: boolean; sellPrice: number }>,
+  ) =>
+    request<unknown>(`/api/products/${productId}/packs/${packId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  attachBarcode: (productId: string, packId: string, code: string) =>
+    request<unknown>(`/api/products/${productId}/packs/${packId}/barcodes`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  removeBarcode: (code: string) =>
+    request<unknown>(`/api/barcodes/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+
+  stock: (params: { branchId?: string; search?: string; negativeOnly?: boolean; limit?: number; offset?: number } = {}) =>
     request<{ items: StockLine[] }>(`/api/stock${qs(params)}`),
 
   stockByBranch: () => request<BranchStock[]>('/api/stock/by-branch'),
@@ -287,19 +1704,428 @@ export const api = {
   movements: (params: { branchId?: string; productId?: string; limit?: number } = {}) =>
     request<{ items: Movement[] }>(`/api/movements${qs(params)}`),
 
+  /**
+   * Post one ledger movement directly, in base units. This is what a
+   * receiving screen uses: pick a pack, enter a quantity of that pack, the
+   * UI multiplies to base units before calling this - the conversion always
+   * happens at the edge, never inside the ledger (AD-2).
+   */
+  postMovement: (body: {
+    productId: string;
+    branchId: string;
+    qtyBase: number;
+    reason: string;
+    unitCost?: number | null;
+    docType?: string | null;
+    occurredAt?: string;
+  }) =>
+    request<{ seq: number; eventId: string; replayed: boolean; qtyAfter: number; backdated: boolean }>(
+      '/api/movements',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /** Resolve a scan to its product and pack multiplier. 404 if unlisted. */
+  resolveBarcode: (code: string) =>
+    request<{
+      code: string;
+      packId: string;
+      productId: string;
+      qtyBase: number;
+      productName: string;
+      packLabel: string;
+      sku: string;
+      sellPrice: number | null;
+    }>(`/api/barcodes/${encodeURIComponent(code)}`),
+
+  // -- sales: baskets, receipts, prices -------------------------------------
+  paymentTypes: () => request<PaymentType[]>('/api/payment-types'),
+
+  tills: (branchId: string) => request<Till[]>(`/api/branches/${branchId}/tills`),
+
+  /** Check out a whole basket. The saleId makes a retry the same sale, not a second one. */
+  checkout: (body: CheckoutBody) =>
+    request<{ receipt: Receipt; replayed: boolean }>('/api/sales/checkout', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  receipt: (saleId: string) => request<Receipt>(`/api/sales/${saleId}`),
+
+  sales: (params: { branchId?: string; from?: string; to?: string; q?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: SaleSummary[]; limit: number; offset: number }>(`/api/sales${qs(params)}`),
+
+  itemReport: (params: { from: string; to: string; branchId?: string; categoryId?: string; search?: string }) =>
+    request<ItemReport>(`/api/reports/items${qs({ ...params })}`),
+
+  itemHistory: (
+    id: string,
+    params: { from: string; to: string; groupBy?: 'day' | 'week' | 'month'; branchId?: string },
+  ) => request<ItemHistory>(`/api/reports/items/${id}/history${qs({ ...params })}`),
+
+  // -- buying ------------------------------------------------------------------------------
+  suppliers: (params: { q?: string; includeInactive?: boolean } = {}) =>
+    request<{ items: SupplierRow[]; financeHidden: boolean }>(`/api/suppliers${qs({ ...params })}`),
+
+  supplier: (id: string) => request<SupplierDetail>(`/api/suppliers/${id}`),
+
+  createSupplier: (body: SupplierInput) =>
+    request<{ id: string; code: string; name: string }>('/api/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateSupplier: (id: string, body: Partial<SupplierInput> & { isActive?: boolean }) =>
+    request<{ ok: true }>(`/api/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  payables: () => request<Payables>('/api/payables'),
+
+  orders: (params: { supplierId?: string; branchId?: string; status?: string; q?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: OrderSummary[]; total: number; financeHidden: boolean }>(`/api/purchase-orders${qs({ ...params })}`),
+
+  order: (id: string) => request<OrderDetail>(`/api/purchase-orders/${id}`),
+
+  createOrder: (body: OrderInput) =>
+    request<{ id: string; poNo: string }>('/api/purchase-orders', { method: 'POST', body: JSON.stringify(body) }),
+
+  cancelOrder: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/purchase-orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  closeOrder: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/purchase-orders/${id}/close`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  receiveGoods: (body: GrnInput) =>
+    request<{ id: string; grnNo: string; totalCost: number; replayed: boolean }>('/api/goods-received', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  goodsReceived: (params: { supplierId?: string; branchId?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) =>
+    request<{ items: GrnSummary[]; financeHidden: boolean }>(`/api/goods-received${qs({ ...params })}`),
+
+  goodsReceivedNote: (id: string) => request<GrnDetail>(`/api/goods-received/${id}`),
+
+  supplierPayments: (params: { supplierId?: string; paymentTypeId?: string; from?: string; to?: string; includeVoided?: boolean; limit?: number; offset?: number } = {}) =>
+    request<{ items: PaymentRow[]; total: number; count: number }>(`/api/supplier-payments${qs({ ...params })}`),
+
+  supplierPayment: (id: string) => request<PaymentDetail>(`/api/supplier-payments/${id}`),
+
+  paySupplier: (body: PaymentInput) =>
+    request<{ id: string; paymentNo: string; replayed: boolean }>('/api/supplier-payments', { method: 'POST', body: JSON.stringify(body) }),
+
+  voidPayment: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/supplier-payments/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  /** Attach a screenshot, photo or PDF as the raw body; the name travels in a header. */
+  attachProof: async (paymentId: string, file: File) => {
+    const response = await fetch(`${API_BASE}/api/supplier-payments/${paymentId}/proofs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+      body: file,
+    });
+    if (!response.ok) {
+      let body: ApiErrorBody;
+      try {
+        body = (await response.json()) as ApiErrorBody;
+      } catch {
+        body = { error: { code: 'UNKNOWN', message: `${response.status} ${response.statusText}` } };
+      }
+      throw new ApiError(response.status, body);
+    }
+    return (await response.json()) as { id: string; contentType: string; sizeBytes: number };
+  },
+
+  supplierCashPoints: () => request<{ items: SupplierCashPoint[] }>('/api/supplier-payments/cash-points'),
+
+  returnGoods: (body: ReturnInput) =>
+    request<{ id: string; prnNo: string; totalCost: number; replayed: boolean }>('/api/purchase-returns', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  purchaseReturns: (params: { supplierId?: string; branchId?: string; q?: string; limit?: number } = {}) =>
+    request<{ items: ReturnSummary[] }>(`/api/purchase-returns${qs({ ...params })}`),
+
+  purchaseReturn: (id: string) => request<ReturnDetail>(`/api/purchase-returns/${id}`),
+
+  proofUrl: (proofId: string) => `${API_BASE}/api/supplier-payments/proofs/${proofId}`,
+
+  postOpeningStock: (body: {
+    id: string;
+    branchId: string;
+    note?: string | null;
+    lines: { productId: string; packId: string; qtyPacks: number; unitCost: number | null }[];
+  }) =>
+    request<{ id: string; docNo: string; totalCost: number; lines: number; linesWithoutCost: number; replayed: boolean }>('/api/opening-stock', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  resolveOpeningCodes: (branchId: string, codes: string[]) =>
+    request<{ items: { code: string; match: OpeningMatch | null }[] }>('/api/opening-stock/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ branchId, codes }),
+    }),
+
+  openingPositions: (branchId: string) =>
+    request<{ items: { productId: string; qtyBase: number }[] }>(`/api/opening-stock/positions${qs({ branchId })}`),
+
+  openingDocs: (params: { branchId?: string; limit?: number } = {}) =>
+    request<{ items: OpeningDocSummary[] }>(`/api/opening-stock${qs({ ...params })}`),
+
+  openingDoc: (id: string) => request<OpeningDoc>(`/api/opening-stock/${id}`),
+
+  dayPreview: (branchId: string) => request<DayPreview>(`/api/day-close/preview${qs({ branchId })}`),
+
+  closeDay: (body: { id: string; branchId: string; note?: string | null; counts: { cashPointId: string; counted: number }[] }) =>
+    request<{ id: string; closeNo: string; replayed: boolean }>('/api/day-close', { method: 'POST', body: JSON.stringify(body) }),
+
+  zReports: (params: { branchId?: string; limit?: number } = {}) => request<{ items: ZSummary[] }>(`/api/day-close${qs({ ...params })}`),
+
+  zReport: (id: string) => request<ZReport>(`/api/day-close/${id}`),
+
+  currentShift: () => request<CurrentShift>('/api/shifts/current'),
+
+  shiftTills: (branchId: string) => request<{ tills: ShiftTill[] }>(`/api/shifts/tills${qs({ branchId })}`),
+
+  openShift: (body: { id: string; branchId: string; cashPointId: string; counted: number; cashierId?: string; note?: string | null }) =>
+    request<{ id: string; shiftNo: string; replayed: boolean }>('/api/shifts/open', { method: 'POST', body: JSON.stringify(body) }),
+
+  closeShift: (id: string, body: { counted: number; note?: string | null }) =>
+    request<{ id: string; shiftNo: string; variance: number }>(`/api/shifts/${id}/close`, { method: 'POST', body: JSON.stringify(body) }),
+
+  shifts: (params: { branchId?: string; status?: 'open' | 'closed' | 'all'; limit?: number } = {}) =>
+    request<{ shifts: ShiftRow[] }>(`/api/shifts${qs({ ...params })}`),
+
+  shift: (id: string) => request<ShiftReport>(`/api/shifts/${id}`),
+
+  customers: (params: { q?: string; includeInactive?: boolean; owingOnly?: boolean } = {}) =>
+    request<{ items: CustomerRow[] }>(`/api/customers${qs({ ...params })}`),
+
+  customerLookup: (q: string) => request<{ items: CustomerLookup[] }>(`/api/customers/lookup${qs({ q })}`),
+
+  enrolCustomer: (body: { name: string; phone: string }) =>
+    request<CustomerLookup & { phone: string }>('/api/customers/enrol', { method: 'POST', body: JSON.stringify(body) }),
+
+  loyaltyRules: () => request<LoyaltyRules>('/api/loyalty/rules'),
+
+  previewPriceList: (body: { supplierId: string; text: string; rule: PriceRuleInput; links?: Record<string, string> }) =>
+    request<PriceListPreview>('/api/supplier-price-lists/preview', { method: 'POST', body: JSON.stringify(body) }),
+
+  applyPriceList: (body: {
+    id: string;
+    supplierId: string;
+    rule: PriceRuleInput;
+    note: string | null;
+    lines: { packId: string; supplierCode: string | null; cost: number; newSell: number | null }[];
+  }) => request<{ id: string; listNo: string; pricesChanged: number; replayed: boolean }>('/api/supplier-price-lists', { method: 'POST', body: JSON.stringify(body) }),
+
+  supplierPriceLists: (params: { supplierId?: string; limit?: number } = {}) =>
+    request<{ items: PriceListSummary[] }>(`/api/supplier-price-lists${qs({ ...params })}`),
+
+  supplierPriceList: (id: string) => request<PriceListDetail>(`/api/supplier-price-lists/${id}`),
+
+  supplierItems: (supplierId: string) => request<{ items: SupplierItem[] }>(`/api/suppliers/${supplierId}/items`),
+
+  customerPoints: (id: string) => request<CustomerPoints>(`/api/customers/${id}/loyalty`),
+
+  adjustPoints: (id: string, body: { id: string; points: number; note: string }) =>
+    request<{ balance: number; replayed: boolean }>(`/api/customers/${id}/loyalty`, { method: 'POST', body: JSON.stringify(body) }),
+
+  customer: (id: string) => request<CustomerDetail>(`/api/customers/${id}`),
+
+  createCustomer: (body: CustomerInput) =>
+    request<{ id: string; code: string; name: string }>('/api/customers', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateCustomer: (id: string, body: Partial<CustomerInput> & { isActive?: boolean }) =>
+    request<{ ok: true }>(`/api/customers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  debtors: () => request<Debtors>('/api/debtors'),
+
+  customerCashPoints: (branchId: string) =>
+    request<{ items: { id: string; name: string; kind: string }[] }>(`/api/customer-payments/cash-points${qs({ branchId })}`),
+
+  receiveFromCustomer: (body: {
+    id: string;
+    customerId: string;
+    branchId: string;
+    amount: number;
+    paymentTypeId: string;
+    reference?: string | null;
+    cashPointId?: string | null;
+    note?: string | null;
+  }) => request<{ id: string; receiptNo: string; replayed: boolean }>('/api/customer-payments', { method: 'POST', body: JSON.stringify(body) }),
+
+  voidCustomerPayment: (id: string, reason: string) =>
+    request<{ ok: true }>(`/api/customer-payments/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+
+  businessToday: () => request<{ timezone: string; today: string }>('/api/business/today'),
+
+  salesReport: (params: SalesReportParams) =>
+    request<SalesReport>(`/api/reports/sales${qs({ ...params })}`),
+
+  priceList: (
+    params: { search?: string; categoryId?: string; missingOnly?: boolean; limit?: number; offset?: number } = {},
+  ) => request<PriceList>(`/api/price-list${qs(params)}`),
+
+  savePrices: (changes: { packId: string; sellPrice: number | null }[]) =>
+    request<{ updated: number; unchanged: number }>('/api/price-list', {
+      method: 'PUT',
+      body: JSON.stringify({ changes }),
+    }),
+
+  fillMissingPrices: (body: { markupPercent: number; roundTo: 0.01 | 0.05 | 0.1 | 0.5 | 1 }) =>
+    request<{ updated: number; skippedNoCost: number }>('/api/price-list/fill-missing', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The scan itself becomes evidence: an unresolved barcode logged as a work item. */
+  logUnlistedScan: (body: { code: string; branchId: string }) =>
+    request<{ id: string }>('/api/scans/unlisted', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Post a stock count. Posting is the point - an unposted count changes nothing. */
+  postCount: (body: {
+    branchId: string;
+    lines: { productId: string; countedBase: number }[];
+  }) =>
+    request<{
+      docId: string;
+      lines: {
+        productId: string;
+        expected: number;
+        counted: number;
+        variance: number;
+        valueImpact: number | null;
+        adjustmentSeq: number | null;
+      }[];
+      summary: {
+        lines: number;
+        reconciled: number;
+        variances: number;
+        netUnits: number;
+        netValue: number;
+      };
+    }>('/api/counts', { method: 'POST', body: JSON.stringify(body) }),
+
+  // -- transfers ---------------------------------------------------------
+  transfers: (params: { branchId?: string; state?: TransferState } = {}) =>
+    request<{ items: TransferSummary[] }>(`/api/transfers${qs(params)}`),
+
+  transfer: (id: string) => request<TransferDetail>(`/api/transfers/${id}`),
+
+  /** Dispatch stock to another branch. Blocked the same way overselling is. */
+  // -- cash custody --------------------------------------------------------
+  cashPositions: (params: { branchId?: string } = {}) =>
+    request<{ items: CashPointPosition[] }>(`/api/cash${qs(params)}`),
+
+  /** Names only, no balance - for a blind count's "which point" picker. */
+  cashPoints: (params: { branchId?: string } = {}) =>
+    request<{ items: CashPointRef[] }>(`/api/cash/points${qs(params)}`),
+
+  createCashPoint: (body: {
+    branchId: string;
+    kind: CashPointKind;
+    name: string;
+    terminalId?: string | null;
+    openingAmount?: number;
+  }) => request<CashPointPosition>('/api/cash/points', { method: 'POST', body: JSON.stringify(body) }),
+
+  cashLedger: (params: { cashPointId?: string; limit?: number } = {}) =>
+    request<{ items: CashLedgerRow[] }>(`/api/cash/ledger${qs(params)}`),
+
+  openCashPoint: (body: { cashPointId: string; amount: number }) =>
+    request<{ seq: number }>('/api/cash/open', { method: 'POST', body: JSON.stringify(body) }),
+
+  moveCash: (body: {
+    fromCashPointId: string;
+    toCashPointId: string;
+    amount: number;
+    reason: 'float_issue' | 'float_return' | 'bank_deposit';
+  }) => request<{ outSeq: number; inSeq: number }>('/api/cash/move', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** The blind count. Only ever send what was physically counted. */
+  postCashCount: (body: { cashPointId: string; countedAmount: number }) =>
+    request<{ cashPointId: string; expected: number; counted: number; variance: number }>(
+      '/api/cash/count',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  dispatchTransfer: (body: {
+    originBranchId: string;
+    destinationBranchId: string;
+    notes?: string | null;
+    lines: { productId: string; qtyDispatched: number }[];
+  }) =>
+    request<{ id: string; reference: string }>('/api/transfers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Credits the destination for exactly what this call says arrived. */
+  receiveTransfer: (id: string, lines: { productId: string; qtyReceived: number }[]) =>
+    request<TransferDetail>(`/api/transfers/${id}/receive`, {
+      method: 'POST',
+      body: JSON.stringify({ lines }),
+    }),
+
+  cancelTransfer: (id: string, reason?: string) =>
+    request<TransferDetail>(`/api/transfers/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ ...(reason === undefined ? {} : { reason }) }),
+    }),
+
   exceptions: (params: { state?: string; kind?: string; branchId?: string; limit?: number } = {}) =>
     request<ExceptionList>(`/api/exceptions${qs(params)}`),
 
-  /** Clearing requires a named person and a note. The server enforces both. */
-  clearException: (id: string, body: { clearedBy: string; note: string }) =>
+  /** Clearing needs a note; it is recorded against whoever is signed in. */
+  clearException: (id: string, body: { note: string }) =>
     request<ExceptionRow>(`/api/exceptions/${id}/clear`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
-  setExceptionState: (id: string, body: { state: 'acknowledged' | 'escalated'; actorId: string }) =>
+  setExceptionState: (id: string, body: { state: 'acknowledged' | 'escalated' }) =>
     request<ExceptionRow>(`/api/exceptions/${id}/state`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  reportMovements: (params: {
+    from: string;
+    to: string;
+    groupBy: 'day' | 'week' | 'month' | 'year';
+    branchId?: string;
+    categoryId?: string;
+    productId?: string;
+  }) => request<MovementReport>(`/api/reports/movements${qs(params)}`),
+
+  stockLedger: (params: { branchId: string; productId: string; from?: string; to?: string }) =>
+    request<StockLedger>(`/api/stock-ledger${qs(params)}`),
+
+  stockReconciliation: (params: {
+    branchId: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    limit?: number;
+  }) => request<StockReconciliation>(`/api/stock-reconciliation${qs(params)}`),
+
+  stockResetPreview: (branchId: string) =>
+    request<ResetPreview>(`/api/branches/${branchId}/stock-reset/preview`),
+
+  /** Cannot be undone. The server re-reads the stock and refuses if it differs from what was previewed. */
+  resetBranchStock: (
+    branchId: string,
+    body: { confirmCode: string; reason: string; expectedPositions: number },
+  ) =>
+    request<ResetResult>(`/api/branches/${branchId}/stock-reset`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  settings: () => request<SettingRow[]>('/api/settings'),
+
+  updateSetting: (key: string, value: string) =>
+    request<SettingRow>(`/api/settings/${encodeURIComponent(key)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
     }),
 };

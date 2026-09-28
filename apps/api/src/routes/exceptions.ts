@@ -13,6 +13,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { assertInScope, scopedBranchIds } from '../scope.js';
 import { parseBody, parseParams, parseQuery } from '../validation.js';
 
 const KINDS = [
@@ -24,6 +25,13 @@ const KINDS = [
   'cash_variance',
   'price_override',
   'void_after_tender',
+  'unreviewed_product',
+  'stock_reset',
+  'opening_stock',
+  'credit_limit_change',
+  'shift_variance',
+  'loyalty_adjustment',
+  'access_granted',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;
@@ -39,20 +47,27 @@ const listQuery = z.object({
 const idParams = z.object({ id: z.uuid() });
 
 const clearBody = z.object({
-  /** Who is taking responsibility. Not optional - that is the whole control. */
-  clearedBy: z.uuid(),
+  /**
+   * Ignored. Who takes responsibility is the signed-in person, never a name
+   * picked from a list - a clearing anyone could put in someone else's name
+   * would not be a control at all. Accepted so older clients keep working.
+   */
+  clearedBy: z.uuid().optional(),
   note: z.string().trim().min(3).max(1000),
 });
 
 const stateBody = z.object({
   state: z.enum(['acknowledged', 'escalated']),
-  actorId: z.uuid(),
+  /** Ignored - the signed-in person. */
+  actorId: z.uuid().optional(),
   note: z.string().trim().max(1000).optional(),
 });
 
 export async function registerExceptionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/exceptions', { onRequest: [app.requirePermission('exception.read')] }, async (request) => {
     const q = parseQuery(listQuery, request.query);
+    if (q.branchId !== undefined) assertInScope(request, q.branchId);
+    const limitTo = scopedBranchIds(request);
 
     let query = app.db
       .selectFrom('exception_event')
@@ -84,6 +99,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     if (q.state !== undefined) query = query.where('exception_event.state', '=', q.state);
     if (q.kind !== undefined) query = query.where('exception_event.kind', '=', q.kind);
     if (q.branchId !== undefined) query = query.where('exception_event.branch_id', '=', q.branchId);
+    if (limitTo !== null) query = query.where('exception_event.branch_id', 'in', limitTo);
 
     const items = await query
       .orderBy('exception_event.occurred_at', 'desc')
@@ -96,6 +112,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     const byState = await app.db
       .selectFrom('exception_event')
       .select(['state', ({ fn }) => fn.countAll<number>().as('n')])
+      .$if(limitTo !== null, (qb) => qb.where('branch_id', 'in', limitTo as string[]))
       .groupBy('state')
       .execute();
 
@@ -103,6 +120,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
       .selectFrom('exception_event')
       .select(['kind', ({ fn }) => fn.countAll<number>().as('n')])
       .where('state', '=', 'open')
+      .$if(limitTo !== null, (qb) => qb.where('branch_id', 'in', limitTo as string[]))
       .groupBy('kind')
       .execute();
 
@@ -129,6 +147,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     if (row === undefined) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No exception ${id}` } });
     }
+    assertInScope(request, row.branch_id);
     return row;
   });
 
@@ -152,40 +171,31 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     if (current === undefined) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No exception ${id}` } });
     }
-    if (current.state === 'cleared') {
-      return reply.status(409).send({
+    assertInScope(request, current.branch_id);
+    const alreadyCleared = () =>
+      reply.status(409).send({
         error: { code: 'ALREADY_CLEARED', message: 'That exception has already been cleared.' },
       });
-    }
+    if (current.state === 'cleared') return alreadyCleared();
 
-    const person = await app.db
-      .selectFrom('person')
-      .select(['id', 'full_name'])
-      .where('id', '=', body.clearedBy)
-      .where('is_active', '=', true)
-      .executeTakeFirst();
-
-    if (person === undefined) {
-      return reply.status(422).send({
-        error: {
-          code: 'UNKNOWN_PERSON',
-          message: 'An exception can only be cleared by an active person.',
-        },
-      });
-    }
+    const clearedBy = request.user!.personId;
+    const person = await app.db.selectFrom('person').select(['id', 'full_name']).where('id', '=', clearedBy).executeTakeFirstOrThrow();
 
     const updated = await app.db.transaction().execute(async (tx) => {
+      // Only if still not cleared: two people pressing Clear at once get one clearing, not two.
       const row = await tx
         .updateTable('exception_event')
         .set({
           state: 'cleared',
-          cleared_by: body.clearedBy,
+          cleared_by: clearedBy,
           cleared_at: new Date(),
           clearing_note: body.note,
         })
         .where('id', '=', id)
+        .where('state', '!=', 'cleared')
         .returningAll()
-        .executeTakeFirstOrThrow();
+        .executeTakeFirst();
+      if (row === undefined) return undefined;
 
       // The audit log is append-only and separate from the queue: clearing is
       // itself an action somebody may later need to account for.
@@ -194,7 +204,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
         .values({
           event_id: crypto.randomUUID(),
           action_code: 'EXCEPTION_CLEARED',
-          actor_id: body.clearedBy,
+          actor_id: clearedBy,
           terminal_id: null,
           branch_id: current.branch_id,
           entity_type: 'exception_event',
@@ -208,6 +218,7 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
       return row;
     });
 
+    if (updated === undefined) return alreadyCleared();
     return { ...updated, clearedByName: person.full_name };
   });
 
@@ -225,25 +236,28 @@ export async function registerExceptionRoutes(app: FastifyInstance): Promise<voi
     if (current === undefined) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `No exception ${id}` } });
     }
-    if (current.state === 'cleared') {
-      return reply.status(409).send({
+    assertInScope(request, current.branch_id);
+    const cannotReopen = () =>
+      reply.status(409).send({
         error: { code: 'ALREADY_CLEARED', message: 'A cleared exception cannot be reopened here.' },
       });
-    }
+    if (current.state === 'cleared') return cannotReopen();
 
     const row = await app.db
       .updateTable('exception_event')
       .set({ state: body.state })
       .where('id', '=', id)
+      .where('state', '!=', 'cleared')
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+    if (row === undefined) return cannotReopen();
 
     await app.db
       .insertInto('audit_log')
       .values({
         event_id: crypto.randomUUID(),
         action_code: `EXCEPTION_${body.state.toUpperCase()}`,
-        actor_id: body.actorId,
+        actor_id: request.user!.personId,
         terminal_id: null,
         branch_id: current.branch_id,
         entity_type: 'exception_event',

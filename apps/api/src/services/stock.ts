@@ -83,7 +83,18 @@ export async function wac(db: Db | Tx, productId: string, branchId: string): Pro
 export async function resolveBarcode(
   db: Db,
   code: string,
-): Promise<{ code: string; packId: string; productId: string; qtyBase: number; productName: string }> {
+): Promise<{
+  code: string;
+  packId: string;
+  packLabel: string;
+  productId: string;
+  qtyBase: number;
+  productName: string;
+  sku: string;
+  /** null when the pack has no selling price yet. */
+  sellPrice: number | null;
+  reviewState: 'approved' | 'pending';
+}> {
   const row = await db
     .selectFrom('barcode')
     .innerJoin('product_pack', 'product_pack.id', 'barcode.pack_id')
@@ -91,14 +102,50 @@ export async function resolveBarcode(
     .select([
       'barcode.code as code',
       'product_pack.id as packId',
+      'product_pack.label as packLabel',
       'product_pack.product_id as productId',
       'product_pack.qty_base as qtyBase',
+      'product_pack.sell_price as sellPrice',
       'product.name as productName',
+      'product.sku as sku',
+      'product.review_state as reviewState',
     ])
     .where('barcode.code', '=', code)
     .executeTakeFirst();
 
   if (row === undefined) throw new UnlistedBarcode(code);
+  return { ...row, sellPrice: row.sellPrice === null ? null : Number(row.sellPrice) };
+}
+
+/**
+ * Record a scan that did not resolve, as a work item.
+ *
+ * `resolveBarcode` throwing 404 is not, on its own, a control - the old
+ * platform let an unresolved scan pass silently, which is how
+ * under-the-counter sales stayed invisible. This is the other half: the
+ * scan itself becomes evidence with a cashier's name attached, landing in
+ * the same exception queue as every other override.
+ */
+export async function logUnlistedScan(
+  db: Db,
+  input: { code: string; branchId: string; actorId: string; terminalId?: string | null | undefined },
+): Promise<{ id: string }> {
+  const row = await db
+    .insertInto('exception_event')
+    .values({
+      event_id: crypto.randomUUID(),
+      kind: 'unlisted_barcode_scan',
+      branch_id: input.branchId,
+      terminal_id: input.terminalId ?? null,
+      actor_id: input.actorId,
+      product_id: null,
+      detail: JSON.stringify({ rawBarcode: input.code }),
+      value_impact: null,
+      currency: null,
+      occurred_at: new Date(),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
   return row;
 }
 
@@ -118,173 +165,124 @@ export async function postMovement(
   db: Db,
   input: PostMovementInput,
 ): Promise<PostMovementResult> {
-  const eventId = input.eventId ?? crypto.randomUUID();
-  const occurredAt = input.occurredAt ?? new Date();
-
-  return db.transaction().execute(async (tx) => {
-    // Serialise on the position before reading anything about it. Held until
-    // the transaction ends, so the replay check and the stock check below are
-    // both taken against a position nobody else can move underneath us.
-    await sql`SELECT pg_advisory_xact_lock(hashtextextended(${
-      input.productId + input.branchId
-    }, 0))`.execute(tx);
-
-    // Replay check, so a resynced event stays a no-op even if the stock
-    // position has changed since it was first accepted.
-    const existing = await tx
-      .selectFrom('stock_movement')
-      .select(['seq'])
-      .where('event_id', '=', eventId)
-      .executeTakeFirst();
-
-    if (existing !== undefined) {
-      return {
-        seq: existing.seq,
-        eventId,
-        replayed: true,
-        qtyAfter: await onHand(tx, input.productId, input.branchId),
-        backdated: false,
-      };
-    }
-
-    const product = await tx
-      .selectFrom('product')
-      .select(['id', 'merged_into_id'])
-      .where('id', '=', input.productId)
-      .executeTakeFirst();
-
-    if (product === undefined) {
-      const { InvalidMasterData } = await import('@retail-ops/domain');
-      throw new InvalidMasterData(`Unknown product: ${input.productId}`, {
-        productId: input.productId,
-      });
-    }
-    if (product.merged_into_id !== null) {
-      const { ProductMerged } = await import('@retail-ops/domain');
-      throw new ProductMerged(product.id, product.merged_into_id);
-    }
-
-    if (input.qtyBase < 0) {
-      const available = await onHand(tx, input.productId, input.branchId);
-      assertStockAvailable(available, input.qtyBase, {
-        allowNegative: input.allowNegative ?? false,
-      });
-    }
-
-    const inserted = await tx
-      .insertInto('stock_movement')
-      .values({
-        event_id: eventId,
-        product_id: input.productId,
-        branch_id: input.branchId,
-        qty_base: input.qtyBase,
-        unit_cost: input.unitCost ?? null,
-        reason: input.reason,
-        doc_type: input.docType ?? null,
-        doc_id: input.docId ?? null,
-        reverses_seq: null,
-        actor_id: input.actorId,
-        terminal_id: input.terminalId ?? null,
-        occurred_at: occurredAt,
-      })
-      .returning(['seq', 'recorded_at'])
-      .executeTakeFirstOrThrow();
-
-    const backdated = isBackdated(occurredAt, inserted.recorded_at);
-    if (backdated) {
-      await tx
-        .insertInto('exception_event')
-        .values({
-          event_id: crypto.randomUUID(),
-          kind: 'backdated_entry',
-          branch_id: input.branchId,
-          terminal_id: input.terminalId ?? null,
-          actor_id: input.actorId,
-          product_id: input.productId,
-          detail: JSON.stringify({
-            movementSeq: inserted.seq,
-            gapHours: backdateGapHours(occurredAt, inserted.recorded_at),
-            docType: input.docType ?? null,
-          }),
-          value_impact: null,
-          currency: null,
-          occurred_at: occurredAt,
-        })
-        .execute();
-    }
-
-    return {
-      seq: inserted.seq,
-      eventId,
-      replayed: false,
-      qtyAfter: await onHand(tx, input.productId, input.branchId),
-      backdated,
-    };
-  });
-}
-
-export interface SellInput {
-  barcode: string;
-  qtyPacks: number;
-  branchId: string;
-  actorId: string;
-  terminalId?: string | null | undefined;
-  eventId?: string | undefined;
-  overrideNegative?: boolean | undefined;
-  overrideBy?: string | null | undefined;
+  return db.transaction().execute((tx) => postMovementInTx(tx, input));
 }
 
 /**
- * A till sale. Converts packs to base units at the edge, then posts.
+ * The same operation, against a transaction the caller already holds.
  *
- * An override is permitted but never silent: it writes an open exception with
- * the authorising manager named on it.
+ * `postMovement` above opens its own transaction, which is right for a
+ * single call but wrong for a multi-line operation like dispatching a
+ * transfer: nesting a Kysely transaction inside another only produces a
+ * SAVEPOINT, not the single atomic unit a multi-line dispatch actually
+ * needs (all lines commit together, or none do). Callers that already have
+ * a `tx` - transfer.ts - call this directly instead.
  */
-export async function sell(db: Db, input: SellInput): Promise<PostMovementResult> {
-  const binding = await resolveBarcode(db, input.barcode);
-  const qtyBase = -Math.abs(packsToBase(input.qtyPacks, binding.qtyBase));
+export async function postMovementInTx(
+  tx: Tx,
+  input: PostMovementInput,
+): Promise<PostMovementResult> {
+  const eventId = input.eventId ?? crypto.randomUUID();
+  const occurredAt = input.occurredAt ?? new Date();
 
-  const base: PostMovementInput = {
-    productId: binding.productId,
-    branchId: input.branchId,
-    qtyBase,
-    reason: 'sale',
-    actorId: input.actorId,
-    docType: 'SALE',
-    terminalId: input.terminalId ?? null,
-    ...(input.eventId === undefined ? {} : { eventId: input.eventId }),
-  };
+  // Serialise on the position before reading anything about it. Held until
+  // the transaction ends, so the replay check and the stock check below are
+  // both taken against a position nobody else can move underneath us.
+  await sql`SELECT pg_advisory_xact_lock(hashtextextended(${
+    input.productId + input.branchId
+  }, 0))`.execute(tx);
 
-  try {
-    return await postMovement(db, base);
-  } catch (error) {
-    const { NegativeStockBlocked } = await import('@retail-ops/domain');
-    if (!(error instanceof NegativeStockBlocked) || input.overrideNegative !== true) throw error;
+  // Replay check, so a resynced event stays a no-op even if the stock
+  // position has changed since it was first accepted.
+  const existing = await tx
+    .selectFrom('stock_movement')
+    .select(['seq'])
+    .where('event_id', '=', eventId)
+    .executeTakeFirst();
 
-    const result = await postMovement(db, { ...base, allowNegative: true });
-    await db
+  if (existing !== undefined) {
+    return {
+      seq: existing.seq,
+      eventId,
+      replayed: true,
+      qtyAfter: await onHand(tx, input.productId, input.branchId),
+      backdated: false,
+    };
+  }
+
+  const product = await tx
+    .selectFrom('product')
+    .select(['id', 'merged_into_id'])
+    .where('id', '=', input.productId)
+    .executeTakeFirst();
+
+  if (product === undefined) {
+    const { InvalidMasterData } = await import('@retail-ops/domain');
+    throw new InvalidMasterData(`Unknown product: ${input.productId}`, {
+      productId: input.productId,
+    });
+  }
+  if (product.merged_into_id !== null) {
+    const { ProductMerged } = await import('@retail-ops/domain');
+    throw new ProductMerged(product.id, product.merged_into_id);
+  }
+
+  if (input.qtyBase < 0) {
+    const available = await onHand(tx, input.productId, input.branchId);
+    assertStockAvailable(available, input.qtyBase, {
+      allowNegative: input.allowNegative ?? false,
+    });
+  }
+
+  const inserted = await tx
+    .insertInto('stock_movement')
+    .values({
+      event_id: eventId,
+      product_id: input.productId,
+      branch_id: input.branchId,
+      qty_base: input.qtyBase,
+      unit_cost: input.unitCost ?? null,
+      reason: input.reason,
+      doc_type: input.docType ?? null,
+      doc_id: input.docId ?? null,
+      reverses_seq: null,
+      actor_id: input.actorId,
+      terminal_id: input.terminalId ?? null,
+      occurred_at: occurredAt,
+    })
+    .returning(['seq', 'recorded_at'])
+    .executeTakeFirstOrThrow();
+
+  const backdated = isBackdated(occurredAt, inserted.recorded_at);
+  if (backdated) {
+    await tx
       .insertInto('exception_event')
       .values({
         event_id: crypto.randomUUID(),
-        kind: 'negative_stock_override',
+        kind: 'backdated_entry',
         branch_id: input.branchId,
         terminal_id: input.terminalId ?? null,
         actor_id: input.actorId,
-        product_id: binding.productId,
+        product_id: input.productId,
         detail: JSON.stringify({
-          movementSeq: result.seq,
-          barcode: input.barcode,
-          authorisedBy: input.overrideBy ?? null,
-          available: error.detail['available'] ?? null,
-          requested: error.detail['requested'] ?? null,
+          movementSeq: inserted.seq,
+          gapHours: backdateGapHours(occurredAt, inserted.recorded_at),
+          docType: input.docType ?? null,
         }),
         value_impact: null,
         currency: null,
-        occurred_at: new Date(),
+        occurred_at: occurredAt,
       })
       .execute();
-    return result;
   }
+
+  return {
+    seq: inserted.seq,
+    eventId,
+    replayed: false,
+    qtyAfter: await onHand(tx, input.productId, input.branchId),
+    backdated,
+  };
 }
 
 export interface CountLineInput {
