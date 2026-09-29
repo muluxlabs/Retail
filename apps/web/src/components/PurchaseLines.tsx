@@ -8,12 +8,13 @@
  * case"); the server converts to a cost per base unit for the stock ledger.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { api, type Product } from '../lib/api.js';
 import { costLineCents, fromCents, parseCost, parseQty } from '../lib/basketMath.js';
 import { packCost } from '../lib/buying.js';
 import { Badge, Spinner, money, qty, useAsync } from '../lib/ui.js';
+import { ScanQty, type ScanHit } from './ScanQty.js';
 
 export interface PurchaseLine {
   key: string;
@@ -85,9 +86,15 @@ export function PurchaseLines({
   note,
   supplierCosts,
   prefillCosts = false,
+  scanKey,
+  scanTitle = 'Scan to add: scan a box, type how many, Enter',
 }: {
   lines: PurchaseLine[];
-  onChange: (lines: PurchaseLine[]) => void;
+  /** A React state setter: scans can arrive faster than a render, so updates are applied to the latest lines. */
+  onChange: (next: PurchaseLine[] | ((prev: PurchaseLine[]) => PurchaseLine[])) => void;
+  /** Show the scan-and-quantity panel (a name for remembering its settings). */
+  scanKey?: string;
+  scanTitle?: string;
   /** Show the ordered quantity and price beside what is being received. */
   showOrdered?: boolean;
   canAdd?: boolean;
@@ -116,6 +123,41 @@ export function PurchaseLines({
     return c === undefined ? '' : String(Number(c.toFixed(4)));
   };
 
+  /**
+   * n packs of the scanned pack: onto the line for that pack (an order line first), or a new line.
+   * Scans can arrive faster than the screen redraws, so every change is a pure update applied to the
+   * latest lines - each scan counts exactly once - and a new item's details are fetched once, however
+   * many of its scans arrive together.
+   */
+  const latest = useRef(lines);
+  latest.current = lines;
+  const fetching = useRef(new Map<string, Promise<PurchaseLine | null>>());
+
+  const addToLine = (prev: PurchaseLine[], packId: string, n: number): PurchaseLine[] | null => {
+    const same = prev.find((l) => l.packId === packId && l.poLineId != null) ?? prev.find((l) => l.packId === packId);
+    if (same === undefined) return null;
+    const next = Math.round(((parseQty(same.qty) ?? 0) + n) * 10_000) / 10_000;
+    // Undoing a line added by scanning removes it; an order's line stays, at zero.
+    if (next <= 0 && same.poLineId == null) return prev.filter((l) => l.key !== same.key);
+    return prev.map((l) => (l.key === same.key ? { ...l, qty: next <= 0 ? '' : String(next) } : l));
+  };
+
+  async function addScanned(hit: ScanHit, n: number) {
+    if (latest.current.some((l) => l.packId === hit.packId) || n <= 0) {
+      onChange((prev) => addToLine(prev, hit.packId, n) ?? prev);
+      return;
+    }
+    let pending = fetching.current.get(hit.packId);
+    if (pending === undefined) {
+      pending = api.product(hit.productId).then((p) => lineFromProduct(p));
+      fetching.current.set(hit.packId, pending);
+      void pending.finally(() => fetching.current.delete(hit.packId));
+    }
+    const line = await pending;
+    if (line === null) return;
+    onChange((prev) => addToLine(prev, hit.packId, n) ?? [...prev, { ...line, key: newKey(), packId: hit.packId, qty: String(n), cost: prefillCosts ? listCost(hit.packId) : '' }]);
+  }
+
   function add(p: Product) {
     const found = lineFromProduct(p);
     if (found === null) return;
@@ -129,6 +171,7 @@ export function PurchaseLines({
 
   return (
     <div className="space-y-3">
+      {canAdd && scanKey !== undefined && <ScanQty storeKey={scanKey} title={scanTitle} onAdd={(hit, n) => void addScanned(hit, n)} />}
       {canAdd && (
         <div className="relative">
           <label className="block">

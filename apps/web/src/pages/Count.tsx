@@ -20,6 +20,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { ScanQty, type ScanHit } from '../components/ScanQty.js';
 import { StockEntryTabs } from '../components/StockEntryTabs.js';
 import { api, ApiError, type Branch } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
@@ -90,6 +91,26 @@ export function Count() {
         : [{ productId: p.id, productName: p.name, sku: p.sku, book: 0, baseUom: p.baseUom, counted: '' }, ...rs],
     );
     setAddSearch('');
+  }
+
+  /**
+   * A scanned count: n of the scanned pack, in base units, ADDED to what is already counted for the item
+   * (the same item on the shelf and in the store room adds up). A negative n takes an entry back.
+   */
+  function addScanned(hit: ScanHit, n: number) {
+    const base = n * hit.qtyBase;
+    const shown = (v: number) => String(Math.round(v * 10_000) / 10_000);
+    setRows((rs) => {
+      const row = rs.find((r) => r.productId === hit.productId);
+      if (row === undefined) {
+        if (base <= 0) return rs;
+        return [{ productId: hit.productId, productName: hit.productName, sku: hit.sku, book: 0, baseUom: '', counted: shown(base) }, ...rs];
+      }
+      const before = row.counted.trim() === '' ? 0 : Number(row.counted);
+      const after = (Number.isFinite(before) ? before : 0) + base;
+      return rs.map((r) => (r.productId === hit.productId ? { ...r, counted: after <= 0 ? '' : shown(after) } : r));
+    });
+    setFilter('');
   }
 
   /** A count sheet for this branch: every item on the list, with a blank Counted column to fill in. */
@@ -290,6 +311,12 @@ export function Count() {
               />
             </label>
           </div>
+
+          <ScanQty
+            storeKey="count"
+            title="Count by scanning: scan an item, type how many are on this shelf, Enter. Scanning it again elsewhere adds up."
+            onAdd={addScanned}
+          />
 
           {uploadReport !== null && (
             <div className="border-accent-300/60 bg-accent-50 rounded-lg border px-3 py-2 text-[12.5px]" data-testid="count-upload-report">

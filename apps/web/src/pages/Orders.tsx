@@ -290,7 +290,7 @@ export function NewOrder() {
       </Card>
 
       <Card className="px-4 py-4">
-        <PurchaseLines lines={lines} onChange={setLines} supplierCosts={supplierCosts} prefillCosts />
+        <PurchaseLines lines={lines} onChange={setLines} supplierCosts={supplierCosts} prefillCosts scanKey="order" scanTitle="Scan to order: scan an item, type how many, Enter" />
       </Card>
 
       {error !== null && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">{error}</div>}

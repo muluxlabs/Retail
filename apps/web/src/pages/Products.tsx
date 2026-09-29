@@ -869,11 +869,10 @@ function PackRow({
     }
   }
 
-  async function removeBarcode() {
-    if (pack.barcode === null) return;
+  async function removeBarcode(code: string) {
     setBusy(true);
     try {
-      await api.removeBarcode(pack.barcode);
+      await api.removeBarcode(code);
       onChanged();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -949,12 +948,12 @@ function PackRow({
       })()}
 
       <span className="ml-auto flex items-center gap-1.5">
-        {pack.barcode !== null ? (
-          <span className="text-ink-400 flex items-center gap-1 font-mono text-[11px]">
-            {pack.barcode}
+        {(pack.barcodes ?? (pack.barcode === null ? [] : [pack.barcode])).map((code) => (
+          <span key={code} className="text-ink-400 flex items-center gap-1 font-mono text-[11px]" data-testid="pack-barcode">
+            {code}
             {canWrite && (
               <button
-                onClick={() => void removeBarcode()}
+                onClick={() => void removeBarcode(code)}
                 disabled={busy}
                 className="text-ink-300 hover:text-red-600"
                 title="Remove barcode"
@@ -963,8 +962,8 @@ function PackRow({
               </button>
             )}
           </span>
-        ) : (
-          canWrite &&
+        ))}
+        {canWrite &&
           (addingBarcode ? (
             <span className="flex items-center gap-1">
               <input
@@ -984,11 +983,11 @@ function PackRow({
             <button
               onClick={() => setAddingBarcode(true)}
               className="text-accent-700 text-[11px] font-medium hover:underline"
+              title="A pack can carry more than one barcode"
             >
               + barcode
             </button>
-          ))
-        )}
+          ))}
         {canWrite && (
           <button
             onClick={() => setEditing(true)}

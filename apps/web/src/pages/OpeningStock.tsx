@@ -268,6 +268,8 @@ export function OpeningStock() {
           <PurchaseLines
             lines={lines}
             onChange={setLines}
+            scanKey="opening"
+            scanTitle="Scan what is on the shelf: scan, type how many, Enter"
             costOptional
             costLabel="Cost per pack"
             note={(productId) => {

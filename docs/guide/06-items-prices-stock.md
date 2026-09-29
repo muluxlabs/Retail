@@ -134,6 +134,8 @@ Every price change is recorded in the [audit log](09-reports-and-controls.md#the
 
 **Stock entry › Stock take**: choose the branch, count, type what is on the shelf.
 
+**Counting by scanning:** scan an item, type how many are on that shelf, press Enter, scan the next. A box's barcode counts boxes (5 boxes of 24 = 120 units). The same item scanned again somewhere else **adds up** — 40 on the shelf plus 20 in the store room is 60 — and **Undo** takes an entry back. A phone's camera makes walking the aisles easy.
+
 **Counting on paper or in Excel:** **Download count sheet** gives an Excel file listing every item at the branch with a blank *Counted* column (in the item's base unit). Fill it in — on a tablet, or print it — and **Upload counts**: the counts fill in on screen, items found by SKU or barcode that were not on the list are added, and any code it cannot find is named. Nothing is posted until you check the screen and press **Post count**.
 
 Only items you typed a count for are posted — an item left blank stays as it was; it is never assumed to be zero. Posting writes each difference to the ledger, valued at average cost, and differences become *count variance* exceptions.

@@ -114,6 +114,8 @@ export interface Pack {
   isDefaultSell: boolean;
   isDefaultBuy: boolean;
   barcode: string | null;
+  /** Every barcode on this pack, oldest first (a pack can carry several: a supplier changes the label). */
+  barcodes?: string[];
   /** List price for one of this pack; null = not priced yet, so it cannot be sold. */
   sellPrice: number | null;
 }

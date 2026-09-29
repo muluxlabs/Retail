@@ -54,6 +54,10 @@ async function clearReviewException(
  * dropped; what is left must be printable, at most 32 characters, and not
  * negative - the damage the old system's data showed.
  */
+/** A pack's barcodes: the first (the one shown) and all of them, oldest first. */
+const firstBarcode = sql<string | null>`(SELECT b.code FROM barcode b WHERE b.pack_id = product_pack.id ORDER BY b.created_at, b.code LIMIT 1)`;
+const allBarcodes = sql<string[]>`coalesce((SELECT array_agg(b.code ORDER BY b.created_at, b.code) FROM barcode b WHERE b.pack_id = product_pack.id), '{}')`;
+
 const barcodeCode = z
   .string()
   .transform((s) => s.replace(/[\s\u0000-\u001f\u007f]/g, ''))
@@ -223,7 +227,6 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         ? []
         : await app.db
             .selectFrom('product_pack')
-            .leftJoin('barcode', 'barcode.pack_id', 'product_pack.id')
             .select([
               'product_pack.id',
               'product_pack.product_id as productId',
@@ -232,7 +235,9 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
               'product_pack.is_default_sell as isDefaultSell',
               'product_pack.is_default_buy as isDefaultBuy',
               'product_pack.sell_price as sellPrice',
-              'barcode.code as barcode',
+              // One row per pack, however many barcodes it has (a joined barcode listed a pack once per code).
+              firstBarcode.as('barcode'),
+              allBarcodes.as('barcodes'),
             ])
             .where('product_pack.product_id', 'in', ids)
             .orderBy('product_pack.qty_base', 'asc')
@@ -289,7 +294,6 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
 
     const packs = await app.db
       .selectFrom('product_pack')
-      .leftJoin('barcode', 'barcode.pack_id', 'product_pack.id')
       .select([
         'product_pack.id',
         'product_pack.label',
@@ -297,8 +301,9 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         'product_pack.is_default_sell as isDefaultSell',
         'product_pack.is_default_buy as isDefaultBuy',
         'product_pack.sell_price as sellPrice',
-        'barcode.code as barcode',
-        'barcode.symbology',
+        firstBarcode.as('barcode'),
+        allBarcodes.as('barcodes'),
+        sql<string | null>`(SELECT b.symbology::text FROM barcode b WHERE b.pack_id = product_pack.id ORDER BY b.created_at, b.code LIMIT 1)`.as('symbology'),
       ])
       .where('product_pack.product_id', '=', id)
       .orderBy('product_pack.qty_base', 'asc')

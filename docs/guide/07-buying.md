@@ -32,6 +32,15 @@ An order moves through: **Ordered → Part received → Received**, or **Closed 
 
 **Buying › Goods received** records a delivery. Choose the supplier and branch, optionally **Against order** (the ordered lines fill in, with what is still to come), then enter what actually arrived and the price per pack **from the invoice**, with the invoice number, date and total.
 
+**Receiving by scanning** — the fastest way with a big delivery:
+
+1. Scan a box (USB scanner, or the camera button). The item comes up as the pack that barcode is on — *box of 48*, *pack of 6*, *single*.
+2. Type how many — **100** — and press Enter. The line is added and the scan box is ready for the next item.
+3. Scanning the same pack again adds to its line; against an order, scans tick off the order's lines.
+4. Tick **Each scan counts 1** to scan box after box without typing. **Undo** takes back the last entry.
+
+The same scan panel is on **Purchase orders** and **Opening stock**.
+
 - If the supplier has a price list on record, their list price shows beside each line as a hint — but the cost recorded is always the invoice's.
 - If the lines do not add up to the invoice total, the screen warns you before posting.
 - Posting creates a numbered **goods received note** (GRN), puts the stock on the books at the branch, and updates the item's average cost.

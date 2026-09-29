@@ -229,7 +229,14 @@ export function Receive() {
       </Card>
 
       <Card className="px-4 py-4">
-        <PurchaseLines lines={lines} onChange={setLines} showOrdered={poId !== ''} supplierCosts={supplierCosts} />
+        <PurchaseLines
+          lines={lines}
+          onChange={setLines}
+          showOrdered={poId !== ''}
+          supplierCosts={supplierCosts}
+          scanKey="receive"
+          scanTitle="Scan what arrived: scan a box, type how many, Enter — then the next"
+        />
         {variance !== null && Math.abs(variance) >= 0.005 && parsed.ok && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900" data-testid="invoice-variance">
             The invoice total is {money(invoiceCents)}, but the goods add up to {money(fromCents(parsed.totalCents))} - a difference of {money(Math.abs(variance))}. What is owed
