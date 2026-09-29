@@ -98,9 +98,11 @@ export const IMPORT_TEMPLATE: { heading: string; required: boolean; help: string
 export async function writeTemplateXlsx(): Promise<void> {
   const { default: writeXlsxFile } = await import('write-excel-file/browser');
   const header = IMPORT_TEMPLATE.map((c) => ({ value: c.heading, fontWeight: 'bold' as const, backgroundColor: c.required ? '#FDE68A' : '#E5E7EB' }));
-  const examples = IMPORT_TEMPLATE[0]!.examples.map((_, i) => IMPORT_TEMPLATE.map((c) => ({ type: String, value: c.examples[i] ?? '' })));
-  // Plenty of empty text cells, so what is typed into them (barcodes above all) stays text.
-  const blank = Array.from({ length: 500 }, () => IMPORT_TEMPLATE.map(() => ({ type: String, value: '' })));
+  // SKU and barcode cells are formatted as text ('@'): typed or scanned into, a barcode stays 6001234567890 with its
+  // leading zeros, instead of Excel turning it into the number 6.00123E+12.
+  const asText = (heading: string) => (heading === 'SKU' || heading === 'Barcode' ? { format: '@' } : {});
+  const examples = IMPORT_TEMPLATE[0]!.examples.map((_, i) => IMPORT_TEMPLATE.map((c) => ({ type: String, value: c.examples[i] ?? '', ...asText(c.heading) })));
+  const blank = Array.from({ length: 500 }, () => IMPORT_TEMPLATE.map((c) => ({ type: String, value: '', ...asText(c.heading) })));
   const bold = (value: string) => ({ value, fontWeight: 'bold' as const });
   const help = [
     [bold('Column'), bold('Needed?'), bold('What to put'), bold('Example')],

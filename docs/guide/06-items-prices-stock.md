@@ -13,6 +13,33 @@
 | Review items added at the till | They are marked **pending review** here, and each one is waiting in the **Exceptions** queue (*Product added at the till*), where a manager approves it or **merges** it into the item it duplicates — its history moves with it. |
 | Find messy data | Items with no pack or no barcode are flagged, not hidden. |
 
+### Packs and pack prices
+
+Each pack has **its own selling price**, chosen by the business. A pack can be cheaper per unit than singles — that is the point of selling in bulk:
+
+| Pack | Units in it | Selling price | The form shows |
+|---|---|---|---|
+| single | 1 | $4.00 | |
+| pack of 3 | 3 | $10.00 | $3.33 a unit · saves $2.00 against 3 singles |
+| case of 24 | 24 | *(blank if not sold by the case)* | tick **we buy**: the pack ordered from suppliers |
+
+- The **per unit** line appears as a price is typed; a pack that costs **more** than the same number of singles is shown in red — almost always a typing mistake.
+- At the till, **scanning the pack's barcode** sells the pack at its price ($10.00) and takes 3 off stock; scanning a single sells one at $4.00. Stock is always counted in singles, so counts and reports stay right however an item is sold.
+- **Till sells** marks the pack the till adds when a cashier finds the item by name; **we buy** marks the pack ordered from suppliers.
+- Three singles scanned one by one are charged as three singles ($12.00): the till does not switch them to the pack price by itself.
+
+### Barcodes: what they hold, and three ways to enter them
+
+A barcode holds **only a number** (such as 6001234567890) — no name and no price. When it is scanned, the system looks the number up in the item master; the price always comes from here. A barcode is **optional**: an item without one is found at the till by name or SKU.
+
+| Way | Best for |
+|---|---|
+| **A USB or Bluetooth barcode scanner** (about $20–40) | Tills and receiving. It works like a keyboard: click any box — in this system or an Excel cell — scan, and the number is typed with Enter. |
+| **The camera button** beside every barcode box | Phones, tablets and laptops without a scanner. Point the camera at the barcode; it is read and filled in. Allow the camera when the browser asks. |
+| **Typing** | A damaged label. |
+
+In the **Excel template**, the Barcode and SKU columns are formatted as text, so Excel keeps all 13 digits and any leading zeros (instead of showing 6.00123E+12).
+
 ## Importing items from Excel or CSV
 
 For a new shop, or a big range change, add hundreds or thousands of items at once: **Item master › Import from Excel / CSV**.

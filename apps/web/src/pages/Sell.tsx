@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { CustomerPicker } from '../components/CustomerPicker.js';
+import { ScanButton } from '../components/ScanButton.js';
 import { ReceiptDialog } from '../components/Receipt.js';
 import { ReceiveDialog } from '../components/ReceiveDialog.js';
 import { CloseShiftDialog, OpenShiftDialog } from '../components/ShiftDialogs.js';
@@ -279,8 +280,8 @@ export function Sell() {
     setCart((lines) => lines.map((l) => (l.packId === packId ? { ...l, ...patch } : l)));
   }
 
-  async function lookUp() {
-    const trimmed = code.trim();
+  async function lookUp(scanned?: string) {
+    const trimmed = (scanned ?? code).trim();
     if (trimmed === '') return;
     setNotFound(null);
     setLoggedScan(false);
@@ -562,6 +563,7 @@ export function Sell() {
                       aria-label="Barcode"
                       className="border-ink-200 focus:border-accent-500 min-w-0 flex-1 rounded-lg border bg-white px-3 py-2 font-mono text-[14px] outline-none"
                     />
+                    <ScanButton onCode={(c) => void lookUp(c)} label="Scan with the camera" />
                     <Button onClick={() => void lookUp()} disabled={code.trim() === ''}>
                       Add
                     </Button>

@@ -23,6 +23,8 @@ import { api, ApiError, type Category, type Pack } from '../lib/api.js';
 import { ExportButton } from '../components/ExportButton.js';
 import { useAuth } from '../lib/auth.js';
 import { parseMoney } from '../lib/basketMath.js';
+import { packPriceNote, packPriceText } from '../lib/packPrice.js';
+import { ScanButton } from '../components/ScanButton.js';
 import { stockReason } from '../lib/terms.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
@@ -358,76 +360,104 @@ function CreateProductForm({
         </label>
 
         <div>
-          <div className="text-ink-600 mb-1.5 text-[11px] font-medium uppercase tracking-wider">
-            Pack hierarchy
+          <div className="text-ink-600 text-[11px] font-medium uppercase tracking-wider">Packs and prices</div>
+          <p className="text-ink-500 mt-0.5 mb-2 max-w-3xl text-[12px]" data-testid="packs-help">
+            A pack is how this item is sold or bought: a single, a pack of 3, a case of 24. Each pack has its own selling price
+            (a pack of 3 can be cheaper than 3 singles) and its own barcode. Stock is always counted in single {baseUom === 'each' || baseUom === '' ? 'units' : baseUom},
+            so selling a pack of 3 takes 3 off.
+          </p>
+          <div className="text-ink-400 hidden gap-2 px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-wider sm:grid sm:grid-cols-[1.1fr_70px_100px_1.5fr_auto_auto_1.4fr_auto]">
+            <span>Pack name</span>
+            <span>Units in it</span>
+            <span>Selling price</span>
+            <span>Per unit</span>
+            <span title="The pack the till adds when the item is found by name">Till sells</span>
+            <span title="The pack you order from suppliers">We buy</span>
+            <span>Barcode on this pack</span>
+            <span />
           </div>
           <div className="space-y-2">
-            {packs.map((pack) => (
-              <div
-                key={pack.key}
-                className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1fr_90px_100px_auto_auto_1fr_auto] sm:gap-2"
-              >
-                <input
-                  required
-                  placeholder="Label, e.g. case of 10"
-                  value={pack.label}
-                  onChange={(e) => updatePack(pack.key, { label: e.target.value })}
-                  className="col-span-2 text-[12.5px] outline-none sm:col-span-1"
-                />
-                <input
-                  required
-                  type="number"
-                  min="0.0001"
-                  step="any"
-                  placeholder="Qty base"
-                  value={pack.qtyBase}
-                  onChange={(e) => updatePack(pack.key, { qtyBase: e.target.value })}
-                  className="tnum text-[12.5px] outline-none"
-                />
-                <input
-                  inputMode="decimal"
-                  placeholder={mayPrice ? 'Price' : 'Price (no access)'}
-                  disabled={!mayPrice}
-                  aria-label="Selling price"
-                  value={pack.sellPrice}
-                  onChange={(e) => updatePack(pack.key, { sellPrice: e.target.value })}
-                  className="tnum text-[12.5px] outline-none disabled:opacity-50"
-                />
-                <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={pack.isDefaultSell}
-                    onChange={(e) => updatePack(pack.key, { isDefaultSell: e.target.checked })}
-                    className="accent-accent-600 size-3.5"
-                  />
-                  sell
-                </label>
-                <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={pack.isDefaultBuy}
-                    onChange={(e) => updatePack(pack.key, { isDefaultBuy: e.target.checked })}
-                    className="accent-accent-600 size-3.5"
-                  />
-                  buy
-                </label>
-                <input
-                  placeholder="Scan or type barcode…"
-                  value={pack.barcode}
-                  onChange={(e) => updatePack(pack.key, { barcode: e.target.value })}
-                  className="text-[12.5px] font-mono outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setPacks((rows) => rows.filter((r) => r.key !== pack.key))}
-                  disabled={packs.length === 1}
-                  className="text-ink-300 hover:text-red-600 disabled:opacity-30"
-                  title="Remove pack"
+            {packs.map((pack) => {
+              const single = packs.find((p) => Number(p.qtyBase) === 1 && parseMoney(p.sellPrice) !== null);
+              const note = packPriceNote(parseMoney(pack.sellPrice), Number(pack.qtyBase), single === undefined || single.key === pack.key ? null : parseMoney(single.sellPrice));
+              return (
+                <div
+                  key={pack.key}
+                  className="border-ink-200 grid grid-cols-2 items-center gap-x-2 gap-y-1.5 rounded-lg border bg-white px-2.5 py-1.5 sm:grid-cols-[1.1fr_70px_100px_1.5fr_auto_auto_1.4fr_auto] sm:gap-2"
+                  data-testid="draft-pack"
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
+                  <input
+                    required
+                    placeholder="Label, e.g. case of 10"
+                    aria-label="Pack name"
+                    value={pack.label}
+                    onChange={(e) => updatePack(pack.key, { label: e.target.value })}
+                    className="col-span-2 text-[12.5px] outline-none sm:col-span-1"
+                  />
+                  <input
+                    required
+                    type="number"
+                    min="0.0001"
+                    step="any"
+                    placeholder="Units"
+                    aria-label="Units in pack"
+                    title={`How many ${baseUom === 'each' || baseUom === '' ? 'single units' : baseUom} are in this pack`}
+                    value={pack.qtyBase}
+                    onChange={(e) => updatePack(pack.key, { qtyBase: e.target.value })}
+                    className="tnum text-[12.5px] outline-none"
+                  />
+                  <input
+                    inputMode="decimal"
+                    placeholder={mayPrice ? 'Price of this pack' : 'Price (no access)'}
+                    disabled={!mayPrice}
+                    aria-label="Selling price"
+                    value={pack.sellPrice}
+                    onChange={(e) => updatePack(pack.key, { sellPrice: e.target.value })}
+                    className="tnum text-[12.5px] outline-none disabled:opacity-50"
+                  />
+                  <span className={`col-span-2 text-[11.5px] sm:col-span-1 ${note?.kind === 'dearer' ? 'font-medium text-red-600' : 'text-ink-500'}`} data-testid="per-unit">
+                    {note === null ? '' : packPriceText(note, Number(pack.qtyBase), baseUom, money)}
+                  </span>
+                  <label className="flex items-center gap-1 text-[11px] whitespace-nowrap" title="The pack the till adds when the item is found by name">
+                    <input
+                      type="checkbox"
+                      checked={pack.isDefaultSell}
+                      onChange={(e) => updatePack(pack.key, { isDefaultSell: e.target.checked })}
+                      className="accent-accent-600 size-3.5"
+                    />
+                    till sells
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] whitespace-nowrap" title="The pack you order from suppliers">
+                    <input
+                      type="checkbox"
+                      checked={pack.isDefaultBuy}
+                      onChange={(e) => updatePack(pack.key, { isDefaultBuy: e.target.checked })}
+                      className="accent-accent-600 size-3.5"
+                    />
+                    we buy
+                  </label>
+                  <div className="col-span-2 flex items-center gap-1.5 sm:col-span-1">
+                    <input
+                      placeholder="Scan or type barcode…"
+                      aria-label="Barcode"
+                      value={pack.barcode}
+                      onChange={(e) => updatePack(pack.key, { barcode: e.target.value })}
+                      className="min-w-0 flex-1 text-[12.5px] font-mono outline-none"
+                    />
+                    <ScanButton onCode={(code) => updatePack(pack.key, { barcode: code })} label="Scan with the camera" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPacks((rows) => rows.filter((r) => r.key !== pack.key))}
+                    disabled={packs.length === 1}
+                    className="text-ink-300 hover:text-red-600 disabled:opacity-30"
+                    title="Remove pack"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
           </div>
           <button
             type="button"
@@ -436,6 +466,10 @@ function CreateProductForm({
           >
             + Add another pack
           </button>
+          <p className="text-ink-400 mt-1 text-[11.5px]">
+            The barcode is optional: items without one are found at the till by name or SKU. A USB barcode scanner types the code into whichever box
+            has the cursor; the camera button does the same on a phone or laptop.
+          </p>
         </div>
 
         {error !== null && (
@@ -556,7 +590,7 @@ function Detail({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section>
-          <SectionTitle>Pack hierarchy</SectionTitle>
+          <SectionTitle>Packs and prices</SectionTitle>
           <ul className="space-y-1.5">
             {d.packs.map((pack) => (
               <PackRow
@@ -566,6 +600,7 @@ function Detail({
                 baseUom={baseUom}
                 canWrite={canWrite}
                 onChanged={refresh}
+                singlePrice={d.packs.find((p) => p.qtyBase === 1 && p.id !== pack.id)?.sellPrice ?? null}
               />
             ))}
           </ul>
@@ -774,12 +809,15 @@ function PackRow({
   baseUom,
   canWrite,
   onChanged,
+  singlePrice,
 }: {
   pack: Pack;
   productId: string;
   baseUom: string;
   canWrite: boolean;
   onChanged: () => void;
+  /** The single's price, to show this pack's saving against it. */
+  singlePrice: number | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(pack.label);
@@ -870,6 +908,12 @@ function PackRow({
             className="tnum w-20 outline-none"
           />
         )}
+        {(() => {
+          const note = packPriceNote(parseMoney(price), Number(qtyBase), singlePrice);
+          return note === null ? null : (
+            <span className={`text-[11px] ${note.kind === 'dearer' ? 'font-medium text-red-600' : 'text-ink-500'}`}>{packPriceText(note, Number(qtyBase), baseUom, money)}</span>
+          );
+        })()}
         <Button onClick={() => void save()} disabled={busy}>
           Save
         </Button>
@@ -888,13 +932,21 @@ function PackRow({
       <span className="tnum">
         {qty(pack.qtyBase)} {baseUom}
       </span>
-      {pack.isDefaultSell && <Badge tone="good">sell</Badge>}
-      {pack.isDefaultBuy && <Badge tone="info">buy</Badge>}
+      {pack.isDefaultSell && <Badge tone="good">till sells</Badge>}
+      {pack.isDefaultBuy && <Badge tone="info">we buy</Badge>}
       {pack.sellPrice === null ? (
         <Badge tone="warn">no price</Badge>
       ) : (
         <span className="tnum text-ink-800 font-medium">{money(pack.sellPrice)}</span>
       )}
+      {(() => {
+        const note = pack.qtyBase === 1 ? null : packPriceNote(pack.sellPrice, pack.qtyBase, singlePrice);
+        return note === null ? null : (
+          <span className={`text-[11px] ${note.kind === 'dearer' ? 'font-medium text-red-600' : 'text-ink-400'}`} data-testid="pack-per-unit">
+            {packPriceText(note, pack.qtyBase, baseUom, money)}
+          </span>
+        );
+      })()}
 
       <span className="ml-auto flex items-center gap-1.5">
         {pack.barcode !== null ? (
@@ -918,10 +970,12 @@ function PackRow({
               <input
                 autoFocus
                 placeholder="Scan or type…"
+                aria-label="New barcode"
                 value={newBarcode}
                 onChange={(e) => setNewBarcode(e.target.value)}
                 className="border-ink-200 w-28 rounded border px-1.5 py-0.5 font-mono text-[11px] outline-none"
               />
+              <ScanButton onCode={setNewBarcode} label="Scan with the camera" />
               <Button onClick={() => void attachBarcode()} disabled={busy || newBarcode.trim() === ''}>
                 Add
               </Button>
@@ -1008,7 +1062,8 @@ function AddPackForm({
         type="number"
         min="0.0001"
         step="any"
-        placeholder="Qty base"
+        placeholder="Units"
+        aria-label="Units in pack"
         value={qtyBase}
         onChange={(e) => setQtyBase(e.target.value)}
         className="tnum w-20 outline-none"
@@ -1029,6 +1084,7 @@ function AddPackForm({
         onChange={(e) => setBarcode(e.target.value)}
         className="w-32 font-mono outline-none"
       />
+      <ScanButton onCode={setBarcode} label="Scan with the camera" />
       <Button type="submit" disabled={busy}>
         Add
       </Button>

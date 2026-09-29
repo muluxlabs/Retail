@@ -62,8 +62,10 @@ async function writeXlsx(data: ExportResult): Promise<void> {
       if (v === null || v === '') return null;
       if (kind === 'money' && typeof v === 'number') return { type: Number, value: v, format: '#,##0.00' };
       if (kind === 'number' && typeof v === 'number') return { type: Number, value: v };
-      // Text cells are stored as text: a name starting with "=" is never a formula.
-      return { type: String, value: String(text(v, kind)) };
+      // Text cells are stored as text: a name starting with "=" is never a formula. Codes stay text when edited.
+      const heading = data.columns[i]!.heading;
+      const code = heading === 'SKU' || heading.includes('arcode') || heading === 'Supplier code';
+      return { type: String, value: String(text(v, kind)), ...(code ? { format: '@' } : {}) };
     }),
   );
   const about = [
