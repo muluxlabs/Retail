@@ -88,6 +88,15 @@ export interface Branch {
   isActive: boolean;
 }
 
+export interface RemovalPreview {
+  items: { id: string; sku: string; name: string; action: 'delete' | 'archive' | 'already-archived'; reason: string; onHand: number }[];
+  toDelete: number;
+  toArchive: number;
+  alreadyArchived: number;
+  withStock: number;
+  reviewAt: number;
+}
+
 export interface NotMovingItem {
   productId: string;
   sku: string;
@@ -1113,7 +1122,8 @@ export type ExceptionKind =
   | 'credit_limit_change'
   | 'shift_variance'
   | 'loyalty_adjustment'
-  | 'access_granted';
+  | 'access_granted'
+  | 'items_removed';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
@@ -1651,6 +1661,8 @@ export const api = {
     params: {
       search?: string;
       reviewState?: 'approved' | 'pending';
+      /** Archived items too. */
+      includeInactive?: boolean;
       limit?: number;
       offset?: number;
     } = {},
@@ -1658,6 +1670,19 @@ export const api = {
     request<{ items: Product[]; total: number; limit: number; offset: number }>(
       `/api/products${qs(params)}`,
     ),
+
+  /** Which chosen items would be deleted (never used) and which archived (have history). Changes nothing. */
+  previewRemoval: (ids: string[]) =>
+    request<RemovalPreview>('/api/products/removal/preview', { method: 'POST', body: JSON.stringify({ ids }) }),
+
+  /** Delete the never-used, archive the rest. confirmCount must equal the number of ids. */
+  removeItems: (body: { ids: string[]; confirmCount: number; note?: string }) =>
+    request<{ deleted: { id: string; sku: string; name: string }[]; archived: { id: string; sku: string; name: string; onHand: number }[]; reviewRaised: boolean }>(
+      '/api/products/removal',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  restoreProduct: (id: string) => request<{ ok: true }>(`/api/products/${id}/restore`, { method: 'POST' }),
 
   product: (id: string) =>
     request<Product & { stock: StockLine[]; movements: Movement[] }>(`/api/products/${id}`),

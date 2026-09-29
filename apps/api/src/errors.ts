@@ -28,6 +28,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   INSUFFICIENT_CASH: 409,
   // Scanned something not in the master. Genuinely absent.
   UNLISTED_BARCODE: 404,
+  // Archived from the item master: kept for history, not sold.
+  ITEM_ARCHIVED: 409,
   // Someone tried to mutate history. The method is not allowed, ever.
   LEDGER_IMMUTABLE: 405,
   // Master data that would reintroduce a known defect.

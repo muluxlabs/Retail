@@ -25,6 +25,8 @@ import { useAuth } from '../lib/auth.js';
 import { parseMoney } from '../lib/basketMath.js';
 import { packPriceNote, packPriceText } from '../lib/packPrice.js';
 import { ScanButton } from '../components/ScanButton.js';
+import { RemoveItemsDialog } from '../components/RemoveItems.js';
+import { allPages } from '../lib/allPages.js';
 import { stockReason } from '../lib/terms.js';
 import { Badge, Button, Card, Empty, ErrorNote, money, qty, Spinner, useAsync } from '../lib/ui.js';
 
@@ -36,19 +38,55 @@ export function Products() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState<string[] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [selectingAll, setSelectingAll] = useState(false);
 
   const products = useAsync(
     () =>
       api.products({
         ...(search === '' ? {} : { search }),
         ...(pendingOnly ? { reviewState: 'pending' as const } : {}),
+        ...(showArchived ? { includeInactive: true } : {}),
         limit: 200,
       }),
-    [search, pendingOnly],
+    [search, pendingOnly, showArchived],
   );
   const categories = useAsync(() => api.categories(), []);
 
-  const items = products.data?.items ?? [];
+  // "Show archived" lists the archived items only, each with Restore.
+  const items = (products.data?.items ?? []).filter((p) => (showArchived ? !p.isActive : true));
+  const mayRemove = can('product.write') && !showArchived;
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  /** Every item matching the search, beyond the first page on screen. */
+  async function selectAllMatching() {
+    setSelectingAll(true);
+    try {
+      const all = await allPages(
+        async (limit, offset) => (await api.products({ ...(search === '' ? {} : { search }), ...(pendingOnly ? { reviewState: 'pending' as const } : {}), limit, offset })).items,
+        200,
+        5000,
+      );
+      setSelected(new Set(all.map((p) => p.id)));
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  async function restore(id: string, name: string) {
+    await api.restoreProduct(id);
+    setNotice(`“${name}” is restored: it can be sold and found again.`);
+    products.reload();
+  }
 
   return (
     <div className="space-y-4">
@@ -108,7 +146,62 @@ export function Products() {
           />
           Pending review only
         </label>
+        {can('product.write') && (
+          <label className="flex items-center gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => {
+                setShowArchived(e.target.checked);
+                setSelected(new Set());
+              }}
+              className="accent-accent-600 size-3.5"
+            />
+            Show archived
+          </label>
+        )}
       </div>
+      {mayRemove && items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-[12px]" data-testid="selection-bar">
+          <button type="button" onClick={() => setSelected(new Set(items.map((p) => p.id)))} className="text-accent-700 font-medium hover:underline">
+            Select the {items.length} shown
+          </button>
+          {products.data !== undefined && products.data.total > items.length && (
+            <button type="button" onClick={() => void selectAllMatching()} disabled={selectingAll} className="text-accent-700 font-medium hover:underline">
+              {selectingAll ? 'Selecting…' : `Select all ${products.data.total}${search === '' ? '' : ' matching'}`}
+            </button>
+          )}
+          {selected.size > 0 && (
+            <>
+              <span className="text-ink-600">· {selected.size} selected</span>
+              <Button variant="danger" onClick={() => setRemoving([...selected])}>
+                Delete or archive…
+              </Button>
+              <button type="button" onClick={() => setSelected(new Set())} className="text-ink-500 hover:text-ink-800">
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {notice !== null && (
+        <div className="border-accent-300/60 bg-accent-50 rounded-lg border px-3 py-2 text-[12.5px]" data-testid="removal-notice">
+          {notice}
+        </div>
+      )}
+      {removing !== null && (
+        <RemoveItemsDialog
+          ids={removing}
+          onClose={() => setRemoving(null)}
+          onDone={(message) => {
+            setRemoving(null);
+            setSelected(new Set());
+            setExpanded(null);
+            setNotice(message);
+            products.reload();
+          }}
+        />
+      )}
       <p className="text-ink-400 -mt-2 text-[11.5px]">
         Items a cashier added on the fly sit here too, flagged “pending review”, until a branch
         manager maps or accepts them from the Exceptions queue.
@@ -122,17 +215,33 @@ export function Products() {
             <Spinner />
           </div>
         ) : items.length === 0 ? (
-          <Empty title="No products match" />
+          <Empty title={showArchived ? 'No archived items' : 'No products match'} />
         ) : (
           <ul className="divide-ink-100 divide-y">
             {items.map((product) => {
               const isOpen = expanded === product.id;
               const hasBarcode = product.packs.some((p) => p.barcode !== null);
               return (
-                <li key={product.id}>
+                <li key={product.id} className="flex flex-wrap items-stretch" data-testid="product-row">
+                  {mayRemove && (
+                    <label className="flex items-center pl-4">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(product.id)}
+                        onChange={() => toggle(product.id)}
+                        aria-label={`Select ${product.name}`}
+                        className="accent-accent-600 size-3.5"
+                      />
+                    </label>
+                  )}
+                  {showArchived && (
+                    <div className="order-last flex items-center pr-4">
+                      <Button onClick={() => void restore(product.id, product.name)}>Restore</Button>
+                    </div>
+                  )}
                   <button
                     onClick={() => setExpanded(isOpen ? null : product.id)}
-                    className="hover:bg-ink-50/60 flex w-full items-center gap-3 px-4 py-2.5 text-left transition"
+                    className="hover:bg-ink-50/60 flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left transition"
                   >
                     <svg
                       viewBox="0 0 20 20"
@@ -145,7 +254,7 @@ export function Products() {
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="text-[13px] font-medium">{product.name}</span>
                         {product.isWeighed && <Badge tone="info">weighed</Badge>}
-                        {!product.isActive && <Badge tone="neutral">inactive</Badge>}
+                        {!product.isActive && <Badge tone="neutral">archived</Badge>}
                         {product.packs.length === 0 && <Badge tone="bad">no pack</Badge>}
                         {!hasBarcode && product.packs.length > 0 && (
                           <Badge tone="warn">no barcode</Badge>
@@ -179,12 +288,15 @@ export function Products() {
                   </button>
 
                   {isOpen && (
-                    <Detail
-                      productId={product.id}
-                      baseUom={product.baseUom}
-                      categories={categories.data ?? []}
-                      onProductChanged={() => products.reload()}
-                    />
+                    <div className="w-full">
+                      <Detail
+                        productId={product.id}
+                        baseUom={product.baseUom}
+                        categories={categories.data ?? []}
+                        onProductChanged={() => products.reload()}
+                        onRemove={mayRemove ? () => setRemoving([product.id]) : undefined}
+                      />
+                    </div>
                   )}
                 </li>
               );
@@ -532,11 +644,13 @@ function Detail({
   baseUom,
   categories,
   onProductChanged,
+  onRemove,
 }: {
   productId: string;
   baseUom: string;
   categories: Category[];
   onProductChanged: () => void;
+  onRemove?: (() => void) | undefined;
 }) {
   const { can } = useAuth();
   const detail = useAsync(() => api.product(productId), [productId]);
@@ -570,7 +684,12 @@ function Detail({
   return (
     <div className="bg-ink-50/60 border-ink-100 border-t px-4 py-4">
       {canWrite && (
-        <div className="mb-3 flex justify-end">
+        <div className="mb-3 flex justify-end gap-2">
+          {onRemove !== undefined && (
+            <Button variant="ghost" onClick={onRemove}>
+              Delete or archive…
+            </Button>
+          )}
           <Button onClick={() => setEditingCore((v) => !v)}>
             {editingCore ? 'Close' : 'Edit product'}
           </Button>

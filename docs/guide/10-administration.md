@@ -37,7 +37,7 @@ Reports have their own **Export CSV** on the report itself: Stock on hand, Sales
 
 ## Branches
 
-**Branches** — add a branch (code, name, **store** or **warehouse**), rename it, or close it. The number of active branches follows the business's plan (**Settings**).
+**Branches** — add a branch (code, name, **store** or **warehouse**), rename it, or close it. A branch cannot be erased: its creation and everything done there is part of the permanent record. **Deactivating** it is the equivalent — it disappears from every screen and frees its place in the plan — and it can be reactivated. The number of active branches follows the business's plan (**Settings**).
 
 ![Branches](images/branches.jpg)
 

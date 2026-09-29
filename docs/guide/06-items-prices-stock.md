@@ -40,6 +40,15 @@ A barcode holds **only a number** (such as 6001234567890) — no name and no pri
 
 In the **Excel template**, the Barcode and SKU columns are formatted as text, so Excel keeps all 13 digits and any leading zeros (instead of showing 6.00123E+12).
 
+### Deleting and archiving items
+
+Tick items in the **Item master** — or **Select all** for a clean start — and press **Delete or archive…** (each item's page has the same button). Before anything happens the system shows what will happen to each:
+
+- **Deleted for good**: items never sold, received, ordered or counted — a typo, a test, a wrong import. A full copy stays in the audit log, and their barcodes are free to use again.
+- **Archived**: items with history. They are hidden rather than erased — gone from the till, the item master and searches, and refused at checkout — while every past receipt, stock figure and report stays exactly as it was. The dialog warns if any still has stock on hand.
+
+Type the number of items to confirm. Removing **ten or more at once** is sent to the exception queue for a second person to review. **Show archived** lists archived items, each with **Restore**. (People with *Add and change items*.)
+
 ## Importing items from Excel or CSV
 
 For a new shop, or a big range change, add hundreds or thousands of items at once: **Item master › Import from Excel / CSV**.

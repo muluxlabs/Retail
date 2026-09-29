@@ -46,7 +46,8 @@ export type ExceptionKind =
   | 'credit_limit_change'
   | 'shift_variance'
   | 'loyalty_adjustment'
-  | 'access_granted';
+  | 'access_granted'
+  | 'items_removed';
 
 export type ProductReviewState = 'approved' | 'pending';
 

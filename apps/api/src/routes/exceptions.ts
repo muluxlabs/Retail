@@ -32,6 +32,7 @@ const KINDS = [
   'shift_variance',
   'loyalty_adjustment',
   'access_granted',
+  'items_removed',
 ] as const;
 
 const STATES = ['open', 'acknowledged', 'cleared', 'escalated'] as const;

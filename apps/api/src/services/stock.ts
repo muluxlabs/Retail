@@ -15,6 +15,7 @@ import {
   assertStockAvailable,
   backdateGapHours,
   computeCountVariance,
+  DomainError,
   isBackdated,
   packsToBase,
   UnlistedBarcode,
@@ -80,6 +81,13 @@ export async function wac(db: Db | Tx, productId: string, branchId: string): Pro
  * an unresolved scan pass silently; that is what made under-the-counter
  * selling invisible.
  */
+/** An item archived from the item master: its history stays, but it is not sold. */
+export class ItemArchived extends DomainError {
+  constructor(name: string, productId: string) {
+    super('ITEM_ARCHIVED', `“${name}” is archived. Restore it in the item master to sell it.`, { productId });
+  }
+}
+
 export async function resolveBarcode(
   db: Db,
   code: string,
@@ -109,12 +117,15 @@ export async function resolveBarcode(
       'product.name as productName',
       'product.sku as sku',
       'product.review_state as reviewState',
+      'product.is_active as isActive',
     ])
     .where('barcode.code', '=', code)
     .executeTakeFirst();
 
   if (row === undefined) throw new UnlistedBarcode(code);
-  return { ...row, sellPrice: row.sellPrice === null ? null : Number(row.sellPrice) };
+  if (!row.isActive) throw new ItemArchived(row.productName, row.productId);
+  const { isActive: _active, ...found } = row;
+  return { ...found, sellPrice: found.sellPrice === null ? null : Number(found.sellPrice) };
 }
 
 /**

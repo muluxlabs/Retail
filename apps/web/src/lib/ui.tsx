@@ -61,6 +61,7 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   shift_variance: 'Till over / short on a shift',
   loyalty_adjustment: 'Loyalty points changed by hand',
   access_granted: 'Access given beyond a role',
+  items_removed: 'Many items removed at once',
 };
 
 /**
@@ -83,6 +84,7 @@ export const EXCEPTION_WHY: Record<ExceptionKind, string> = {
   shift_variance: 'The cash counted in a till at the start or end of a shift did not match the books. The cashier on that shift is named.',
   loyalty_adjustment: 'Points are worth money at the till. Check who changed a customer\'s points, by how many, and the reason given.',
   access_granted: 'Someone was given a permission their role does not include. Check it is still needed, and who gave it.',
+  items_removed: 'Ten or more items were deleted or archived in one go. Check it was meant: archived items can be restored in the item master.',
 };
 
 // -- primitives --------------------------------------------------------------

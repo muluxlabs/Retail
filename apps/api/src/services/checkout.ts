@@ -28,6 +28,7 @@
  *    the goods twice.
  */
 
+import { ItemArchived } from './stock.js';
 import {
   fromCents,
   InvalidBasket,
@@ -171,6 +172,7 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
       'product.name as name',
       'product.sku as sku',
       'product.review_state as reviewState',
+      'product.is_active as isActive',
     ])
     .where('product_pack.id', 'in', packIds)
     .execute();
@@ -192,6 +194,7 @@ async function runCheckout(tx: Tx, input: CheckoutInput): Promise<void> {
     if (pack === undefined || pack.productId !== line.productId) {
       throw new InvalidBasket('An item in this sale is not a known product and pack.');
     }
+    if (!pack.isActive) throw new ItemArchived(pack.name, pack.productId);
     const listPrice = pack.sellPrice === null ? null : Number(pack.sellPrice);
     const asked = line.unitPrice;
     const discount = line.discount ?? 0;

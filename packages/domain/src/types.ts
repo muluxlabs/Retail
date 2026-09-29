@@ -39,7 +39,8 @@ export type ExceptionKind =
   | 'credit_limit_change'
   | 'shift_variance'
   | 'loyalty_adjustment'
-  | 'access_granted';
+  | 'access_granted'
+  | 'items_removed';
 
 export type ExceptionState = 'open' | 'acknowledged' | 'cleared' | 'escalated';
 
