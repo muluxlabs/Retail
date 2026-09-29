@@ -88,6 +88,28 @@ export interface Branch {
   isActive: boolean;
 }
 
+export interface ReorderItem {
+  productId: string;
+  sku: string;
+  name: string;
+  baseUom: string;
+  soldInPeriod: number;
+  perDay: number;
+  onHand: number;
+  onOrder: number;
+  inTransit: number;
+  daysLeft: number;
+  urgency: 'out' | 'soon' | 'low';
+  pack: { id: string; label: string; qtyBase: number } | null;
+  packs: { id: string; label: string; qtyBase: number }[];
+  suggestPacks: number;
+  suggestUnits: number;
+  supplier: { id: string; name: string } | null;
+  costPerPack: number | null;
+  costFrom: string | null;
+  lineCost: number | null;
+}
+
 export type ExportKind = 'items' | 'suppliers' | 'customers' | 'price-lists' | 'staff';
 
 export interface ExportResult {
@@ -1552,6 +1574,12 @@ export const api = {
         byName: string;
       }[];
     }>('/api/products/imports'),
+
+  /** What a branch will run out of and how much to order (po.write). */
+  reorder: (params: { branchId: string; lookbackDays: number; leadDays: number; coverDays: number }) =>
+    request<{ branch: { id: string; code: string; name: string; kind: string }; lookbackDays: number; leadDays: number; coverDays: number; items: ReorderItem[] }>(
+      `/api/reorder${qs(params)}`,
+    ),
 
   /** A whole list for Excel or CSV. Needs data.export; recorded in the audit log. */
   exportRecords: (kind: ExportKind, format: 'xlsx' | 'csv') => request<ExportResult>(`/api/exports/${kind}?format=${format}`),

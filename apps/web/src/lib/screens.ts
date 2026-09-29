@@ -45,6 +45,7 @@ export const SCREENS: Screen[] = [
 
   { to: '/suppliers', label: 'Suppliers', area: 'Buying', description: 'Suppliers, their terms and account statements.', permission: ['supplier.read'], keywords: 'vendor creditor statement' },
   { to: '/suppliers/import', label: 'Import suppliers', area: 'Buying', description: 'Add many suppliers at once from an Excel or CSV file.', permission: ['supplier.write'], keywords: 'excel csv spreadsheet upload bulk import suppliers vendors template' },
+  { to: '/reorder', label: 'Reorder', area: 'Buying', description: 'What a branch is running out of, and how much to order from whom.', permission: ['po.write'], keywords: 'restock reorder low stock running out replenish suggestion order' },
   { to: '/orders', label: 'Purchase orders', area: 'Buying', description: 'Order stock from suppliers and follow deliveries.', permission: ['supplier.read'], keywords: 'po order buy' },
   { to: '/receive', label: 'Goods received', area: 'Buying', description: 'Record a delivery against an order and invoice.', permission: ['grn.post'], keywords: 'grn delivery invoice receiving' },
   { to: '/returns', label: 'Returns to suppliers', area: 'Buying', description: 'Send goods back and reduce what you owe.', permission: ['supplier.read'], keywords: 'prn return credit note' },
@@ -74,7 +75,7 @@ export const MAIN: { label: string; paths: string[] }[] = [
   { label: 'Overview', paths: ['/'] },
   { label: 'Sell', paths: ['/sell'] },
   { label: 'Cash', paths: ['/cash', '/shifts', '/day-close'] },
-  { label: 'Buying', paths: ['/suppliers', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'] },
+  { label: 'Buying', paths: ['/suppliers', '/reorder', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'] },
   { label: 'Stock', paths: ['/stock', '/ledger', '/count', '/opening-stock', '/transfers'] },
   { label: 'Reports', paths: ['/profit', '/sales', '/items', '/reports'] },
   { label: 'Customers', paths: ['/customers', '/debtors', '/customers/import'] },

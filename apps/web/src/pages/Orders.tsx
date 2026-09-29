@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { BuyingTabs } from '../components/BuyingTabs.js';
 import { parseLines, PurchaseLines, type PurchaseLine } from '../components/PurchaseLines.js';
@@ -166,15 +166,16 @@ export function Orders() {
 export function NewOrder() {
   const nav = useNavigate();
   const [params] = useSearchParams();
+  const from = (useLocation().state as { reorder?: { supplierId: string; branchId: string; lines: PurchaseLine[] } } | null)?.reorder;
   const suppliers = useAsync(() => api.suppliers({}), []);
   const branches = useAsync(() => api.branches(), []);
-  const [supplierId, setSupplierId] = useState(params.get('supplierId') ?? '');
-  const [branchId, setBranchId] = useState('');
+  const [supplierId, setSupplierId] = useState(from?.supplierId || params.get('supplierId') || '');
+  const [branchId, setBranchId] = useState(from?.branchId ?? '');
   const [expected, setExpected] = useState('');
   const [terms, setTerms] = useState<SupplierTerms>('credit');
   const [days, setDays] = useState('30');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<PurchaseLine[]>([]);
+  const [notes, setNotes] = useState(from === undefined ? '' : 'From reorder suggestions');
+  const [lines, setLines] = useState<PurchaseLine[]>(from?.lines ?? []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

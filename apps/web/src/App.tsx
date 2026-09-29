@@ -39,6 +39,7 @@ import { Transfers } from './pages/Transfers.js';
 import { UserAccessPage } from './pages/UserAccess.js';
 import { Audit } from './pages/Audit.js';
 import { Exports } from './pages/Exports.js';
+import { Reorder } from './pages/Reorder.js';
 import { ItemImport } from './pages/ItemImport.js';
 import { RecordImport } from './pages/RecordImport.js';
 import { Users } from './pages/Users.js';
@@ -195,6 +196,7 @@ export function App() {
           <Route path="/ledger" element={<Guard permission="stock.read" home={home}><Ledger /></Guard>} />
           <Route path="/users" element={<Guard permission="user.read" home={home}><Users /></Guard>} />
           <Route path="/exports" element={<Guard permission="data.export" home={home}><Exports /></Guard>} />
+          <Route path="/reorder" element={<Guard permission="po.write" home={home}><Reorder /></Guard>} />
           <Route path="/users/:id/access" element={<Guard permission="user.read" home={home}><UserAccessPage /></Guard>} />
           <Route path="/branches" element={<Guard permission="branch.manage" home={home}><Branches /></Guard>} />
           <Route path="/settings" element={<Guard permission="settings.manage" home={home}><Settings /></Guard>} />

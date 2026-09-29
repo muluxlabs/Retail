@@ -18,6 +18,23 @@ Open a supplier for their **account statement**: every delivery, payment and ret
 
 > Staff tied to one branch see their suppliers and deliveries, but not the group's balances with them — that is group finance.
 
+## Reorder: what is running out
+
+**Buying › Reorder** shows, for one branch, what will run out before a new delivery could arrive — and how much to order.
+
+| Setting | Meaning |
+|---|---|
+| **Selling pace over the last** | How many days of sales to measure the pace by (default 30). |
+| **Supplier delivers in** | Days between ordering and the goods arriving (default 7). |
+| **Then hold stock for** | How many more days of stock the order should cover (default 14). |
+
+- An item is listed when what is **on hand, on order and on its way** will not last the delivery time. Stock already ordered or being transferred is counted, so nothing is ordered twice.
+- **Order** brings it up to enough for the delivery time plus the extra days, rounded **up to whole buying packs** (cases, bales). Change the number, or untick a line, as you see fit.
+- Items are grouped by **supplier** — their latest price list, or else whoever delivered it last — with the price.
+- **Create order** opens that supplier's purchase order already filled in. Nothing is ordered until you check it and press **Place order**.
+- For a **warehouse**, the pace includes what it sends to the branches.
+- Items that have not sold in the period are not listed: a reorder needs a selling pace.
+
 ## Purchase orders
 
 **Buying › Orders › New purchase order**: supplier, branch to deliver to, expected date, payment terms, and the lines (item, pack, quantity, price per pack). If the supplier has sent a price list, each line starts at **their current price**.
