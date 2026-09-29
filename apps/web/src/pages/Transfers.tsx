@@ -14,6 +14,7 @@
  */
 
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { api, ApiError, type Branch, type Product, type TransferDetail, type TransferSummary } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
@@ -27,9 +28,10 @@ const STATE_TONE: Record<string, 'neutral' | 'warn' | 'good' | 'bad'> = {
 
 export function Transfers() {
   const { can } = useAuth();
+  const prefill = (useLocation().state as { transfer?: TransferPrefill } | null)?.transfer;
   const [branchId, setBranchId] = useState('');
   const [state, setState] = useState('');
-  const [dispatching, setDispatching] = useState(false);
+  const [dispatching, setDispatching] = useState(prefill !== undefined);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const branches = useAsync(() => api.branches(), []);
@@ -58,6 +60,7 @@ export function Transfers() {
       {dispatching && (
         <DispatchForm
           branches={branches.data ?? []}
+          initial={prefill}
           onDispatched={() => {
             setDispatching(false);
             transfers.reload();
@@ -161,19 +164,29 @@ interface DraftLine {
 
 let draftKey = 0;
 
+/** A transfer to start from, e.g. "Move there" on Not moving. */
+interface TransferPrefill {
+  originBranchId: string;
+  destinationBranchId: string;
+  notes: string;
+  lines: Omit<DraftLine, 'key'>[];
+}
+
 function DispatchForm({
   branches,
+  initial,
   onDispatched,
   onCancel,
 }: {
   branches: Branch[];
+  initial?: TransferPrefill | undefined;
   onDispatched: () => void;
   onCancel: () => void;
 }) {
-  const [originBranchId, setOriginBranchId] = useState('');
-  const [destinationBranchId, setDestinationBranchId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [originBranchId, setOriginBranchId] = useState(initial?.originBranchId ?? '');
+  const [destinationBranchId, setDestinationBranchId] = useState(initial?.destinationBranchId ?? '');
+  const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [lines, setLines] = useState<DraftLine[]>(() => (initial?.lines ?? []).map((l) => ({ ...l, key: draftKey++ })));
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -253,6 +266,7 @@ function DispatchForm({
               required
               value={originBranchId}
               onChange={(e) => setOriginBranchId(e.target.value)}
+              aria-label="From branch"
               className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
             >
               <option value="">Select a branch…</option>
@@ -268,6 +282,7 @@ function DispatchForm({
               required
               value={destinationBranchId}
               onChange={(e) => setDestinationBranchId(e.target.value)}
+              aria-label="To branch"
               className="border-ink-200 focus:border-accent-500 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] outline-none"
             >
               <option value="">Select a branch…</option>
@@ -317,6 +332,7 @@ function DispatchForm({
                       min="0.0001"
                       step="any"
                       placeholder="Qty"
+                      aria-label={`Quantity of ${line.productName}`}
                       value={line.qtyPacks}
                       onChange={(e) => updateLine(line.key, { qtyPacks: e.target.value })}
                       className="tnum text-[12.5px] outline-none"

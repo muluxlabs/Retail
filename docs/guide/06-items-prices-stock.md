@@ -120,6 +120,16 @@ Every price change is recorded in the [audit log](09-reports-and-controls.md#the
 
 ![Stock on hand](images/stock-on-hand.jpg)
 
+## Not moving: stock that is not selling
+
+**Stock › Not moving** shows, for one branch, stock that is sitting there and not selling — and the money tied up in it.
+
+- **Not selling**: in stock at this branch, nothing sold here in the period you choose (30, 60, 90 or 180 days).
+- **Slow**: it sold, but at that pace the stock here would last more than 180 days.
+- Each shows what is on hand, its value at average cost, and when it last sold here. The total at the top is the money tied up.
+- **Sells at**: if another branch is selling the same item, it is named with its pace and what it holds. **Move … there** opens a transfer already filled in — from this branch, to that one, with the suggested quantity (what that branch would sell over the same period, less what it already holds). Check it and press **Dispatch**.
+- Nowhere selling it? Consider a lower price, a promotion, or not buying it again.
+
 ## The stock ledger
 
 **Stock ledger** is the bin card, in the form an accountant reads it:

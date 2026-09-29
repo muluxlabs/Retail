@@ -34,6 +34,7 @@ export const SCREENS: Screen[] = [
   { to: '/debtors', label: 'Owed by customers', area: 'Customers', description: 'Aged debtors: who owes what, and how overdue.', permission: ['customer.read'], keywords: 'debtors receivables ageing overdue' },
 
   { to: '/stock', label: 'Stock on hand', area: 'Stock', description: 'What each branch holds and what it is worth.', permission: ['stock.read'], keywords: 'inventory quantity value below zero negative' },
+  { to: '/not-moving', label: 'Not moving', area: 'Stock', description: 'Stock not selling at a branch, the money tied up, and where it does sell.', permission: ['stock.read'], keywords: 'dead stock slow moving not selling overstock aged transfer' },
   { to: '/ledger', label: 'Stock ledger', area: 'Stock', description: 'Every movement of every item, in accounting form.', permission: ['stock.read'], keywords: 'bin card reconciliation movements history' },
   { to: '/count', label: 'Stock take', area: 'Stock', description: 'Count what is on the shelf and post the differences.', permission: ['stock.adjust'], keywords: 'count stocktake adjustment variance' },
   { to: '/opening-stock', label: 'Opening stock', area: 'Stock', description: 'Bring the stock already on the shelves onto the books.', permission: ['stock.opening'], keywords: 'import spreadsheet new branch start' },
@@ -76,7 +77,7 @@ export const MAIN: { label: string; paths: string[] }[] = [
   { label: 'Sell', paths: ['/sell'] },
   { label: 'Cash', paths: ['/cash', '/shifts', '/day-close'] },
   { label: 'Buying', paths: ['/suppliers', '/reorder', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'] },
-  { label: 'Stock', paths: ['/stock', '/ledger', '/count', '/opening-stock', '/transfers'] },
+  { label: 'Stock', paths: ['/stock', '/not-moving', '/ledger', '/count', '/opening-stock', '/transfers'] },
   { label: 'Reports', paths: ['/profit', '/sales', '/items', '/reports'] },
   { label: 'Customers', paths: ['/customers', '/debtors', '/customers/import'] },
   { label: 'Exceptions', paths: ['/exceptions', '/audit'] },

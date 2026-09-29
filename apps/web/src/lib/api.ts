@@ -88,6 +88,22 @@ export interface Branch {
   isActive: boolean;
 }
 
+export interface NotMovingItem {
+  productId: string;
+  sku: string;
+  name: string;
+  baseUom: string;
+  status: 'not-selling' | 'slow';
+  onHand: number;
+  soldInPeriod: number;
+  daysOfCover: number | null;
+  value: number | null;
+  lastSold: string | null;
+  lastIn: string | null;
+  sellsAt: { branchId: string; code: string; name: string; soldThere: number; perDayThere: number; stockThere: number; suggestQty: number } | null;
+  packs: { id: string; label: string; qtyBase: number }[];
+}
+
 export interface ReorderItem {
   productId: string;
   sku: string;
@@ -1574,6 +1590,10 @@ export const api = {
         byName: string;
       }[];
     }>('/api/products/imports'),
+
+  /** Stock at a branch that is not selling there, and where it does sell (stock.read). */
+  notMoving: (params: { branchId: string; days: number }) =>
+    request<{ branch: { id: string; code: string; name: string }; days: number; slowDays: number; totalValue: number; items: NotMovingItem[] }>(`/api/stock/not-moving${qs(params)}`),
 
   /** What a branch will run out of and how much to order (po.write). */
   reorder: (params: { branchId: string; lookbackDays: number; leadDays: number; coverDays: number }) =>
