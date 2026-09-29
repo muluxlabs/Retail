@@ -8,7 +8,7 @@
  */
 
 import type { Database } from '@retail-ops/db';
-import { isMoney, nameIndex } from '@retail-ops/domain';
+import { barcodeType, isMoney, nameIndex } from '@retail-ops/domain';
 import type { FastifyInstance } from 'fastify';
 import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
@@ -47,6 +47,24 @@ async function clearReviewException(
 }
 
 /** A selling price: real money, or null to say "not priced". */
+
+/**
+ * A barcode as typed, scanned by a USB scanner or read by the camera. Spaces and
+ * invisible control characters (a camera can return a GS1 separator) are
+ * dropped; what is left must be printable, at most 32 characters, and not
+ * negative - the damage the old system's data showed.
+ */
+const barcodeCode = z
+  .string()
+  .transform((s) => s.replace(/[\s\u0000-\u001f\u007f]/g, ''))
+  .pipe(
+    z
+      .string()
+      .min(1, 'The barcode is empty.')
+      .max(32, 'A barcode is at most 32 characters.')
+      .regex(/^[\x21-\x7e]+$/, 'A barcode has letters, digits and simple symbols only.')
+      .refine((c) => !c.startsWith('-'), 'A barcode cannot start with a minus sign.'),
+  );
 const price = z
   .number()
   .min(0)
@@ -79,7 +97,7 @@ const createProduct = z.object({
         qtyBase: z.number().positive(),
         isDefaultSell: z.boolean().default(false),
         isDefaultBuy: z.boolean().default(false),
-        barcode: z.string().trim().min(1).max(32).optional(),
+        barcode: barcodeCode.optional(),
         sellPrice: price.optional(),
       }),
     )
@@ -102,7 +120,7 @@ const createPack = z.object({
   qtyBase: z.number().positive(),
   isDefaultSell: z.boolean().default(false),
   isDefaultBuy: z.boolean().default(false),
-  barcode: z.string().trim().min(1).max(32).optional(),
+  barcode: barcodeCode.optional(),
   sellPrice: price.optional(),
 });
 
@@ -115,15 +133,16 @@ const updatePack = z.object({
 });
 
 const attachBarcode = z.object({
-  code: z.string().trim().min(1).max(32),
-  symbology: z.enum(['ean13', 'ean8', 'upca', 'internal', 'embedded_weight']).default('ean13'),
+  code: barcodeCode,
+  /** Worked out from the code when not given: 13 digits EAN-13, 8 EAN-8, 12 UPC-A, anything else the shop's own. */
+  symbology: z.enum(['ean13', 'ean8', 'upca', 'internal', 'embedded_weight']).optional(),
 });
 
 const quickAddProduct = z.object({
   name: z.string().trim().min(1).max(200),
   /** What the customer is being charged. The manager reviewing the item confirms or corrects it. */
   sellPrice: price.optional(),
-  barcode: z.string().trim().min(1).max(32).optional(),
+  barcode: barcodeCode.optional(),
   branchId: z.uuid(),
   terminalId: z.uuid().nullable().default(null),
 });
@@ -400,7 +419,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
           // primary key; a bad code fails here rather than being stored.
           await tx
             .insertInto('barcode')
-            .values({ code: pack.barcode, pack_id: packRow.id, symbology: 'ean13' })
+            .values({ code: pack.barcode, pack_id: packRow.id, symbology: barcodeType(pack.barcode) })
             .execute();
         }
       }
@@ -535,7 +554,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         if (body.barcode !== undefined) {
           await tx
             .insertInto('barcode')
-            .values({ code: body.barcode, pack_id: pack.id, symbology: 'ean13' })
+            .values({ code: body.barcode, pack_id: pack.id, symbology: barcodeType(body.barcode) })
             .execute();
         }
 
@@ -664,7 +683,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
       const created = await app.db.transaction().execute(async (tx) => {
         const row = await tx
           .insertInto('barcode')
-          .values({ code: body.code, pack_id: packId, symbology: body.symbology })
+          .values({ code: body.code, pack_id: packId, symbology: body.symbology ?? barcodeType(body.code) })
           .returningAll()
           .executeTakeFirstOrThrow();
 
@@ -800,7 +819,7 @@ export async function registerProductRoutes(app: FastifyInstance): Promise<void>
         if (body.barcode !== undefined) {
           await tx
             .insertInto('barcode')
-            .values({ code: body.barcode, pack_id: pack.id, symbology: 'ean13' })
+            .values({ code: body.barcode, pack_id: pack.id, symbology: barcodeType(body.barcode) })
             .execute();
         }
 

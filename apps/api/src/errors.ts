@@ -119,6 +119,16 @@ function translatePostgres(error: { code?: string; message?: string }): {
       },
     };
   }
+  const detail = `${message} ${(error as { constraint?: string }).constraint ?? ''}`;
+  if (error.code === '23505' && detail.includes('barcode_pkey')) {
+    return { status: 409, body: { error: { code: 'DUPLICATE_BARCODE', message: 'That barcode is already on another item or pack.' } } };
+  }
+  if (error.code === '23514' && detail.includes('barcode_shape')) {
+    return { status: 422, body: { error: { code: 'INVALID_BARCODE', message: 'An EAN-13 barcode has exactly 13 digits.' } } };
+  }
+  if (error.code === '23514' && detail.includes('barcode_no_negatives')) {
+    return { status: 422, body: { error: { code: 'INVALID_BARCODE', message: 'A barcode cannot start with a minus sign.' } } };
+  }
   switch (error.code) {
     case '23505': // unique_violation
       return {
