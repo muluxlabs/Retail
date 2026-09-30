@@ -26,6 +26,7 @@ const TABS: Tab[] = [
   { to: '/price-lists', label: 'Price lists', any: ['supplier.read'] },
   { to: '/payments', label: 'Payments', any: ['supplier.read'], groupWide: true },
   { to: '/owed', label: 'Owed to suppliers', any: ['supplier.read'], groupWide: true },
+  { to: '/reorder', label: 'Reorder', any: ['po.write'] },
 ];
 
 export function BuyingTabs() {

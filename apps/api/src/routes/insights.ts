@@ -48,6 +48,11 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
     const branches = await branchesInView(request, q.branchId);
     const insights: Insight[] = [];
     if (branches.length === 0) return { insights };
+    // Each card shows only what the person could already see on the screen it is about.
+    const may = (p: string) => request.user!.permissions.has(p);
+    const seesCosts = may('price.write') || may('sale.read');
+    const pricesAt = may('price.write') ? { label: 'Fix prices', to: '/prices' } : { label: 'See sales and profit', to: '/profit' };
+    const reviewAt = may('price.write') ? { label: 'Review prices', to: '/prices' } : { label: 'See sales and profit', to: '/profit' };
     const b = sql`${branches}::uuid[]`;
 
     // Average cost per base unit across the branches in view (what stock is valued at).
@@ -65,14 +70,14 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       JOIN cost ON cost.product_id = p.id
       WHERE pk.sell_price IS NOT NULL AND pk.sell_price < cost.wac * pk.qty_base
       ORDER BY (cost.wac * pk.qty_base - pk.sell_price) DESC`.execute(app.db);
-    if (below.rows.length > 0) {
+    if (seesCosts && below.rows.length > 0) {
       insights.push({
         id: 'below-cost', area: 'Prices and margins', severity: 'high',
         title: `${plural(below.rows.length, 'price')} below cost`,
         why: 'Every one of these sold loses money. Usually a cost went up and the selling price was not changed, or a price was typed wrong.',
         figure: plural(below.rows.length, 'pack'),
         examples: below.rows.slice(0, 5).map((r) => `${r.name} (${r.label}): sells ${money(Number(r.sell))}, costs ${money(Number(r.cost))}`),
-        action: { label: 'Fix prices', to: '/prices' },
+        action: pricesAt,
       });
     }
 
@@ -85,14 +90,14 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       WHERE pk.sell_price > 0 AND pk.sell_price >= cost.wac * pk.qty_base
         AND (pk.sell_price - cost.wac * pk.qty_base) / pk.sell_price < 0.05
       ORDER BY margin`.execute(app.db);
-    if (thin.rows.length > 0) {
+    if (seesCosts && thin.rows.length > 0) {
       insights.push({
         id: 'thin-margin', area: 'Prices and margins', severity: 'medium',
         title: `${plural(thin.rows.length, 'price')} with a margin under 5%`,
         why: 'Barely above cost: a small cost increase, breakage or theft turns them into losses. Check they are priced on purpose.',
         figure: plural(thin.rows.length, 'pack'),
         examples: thin.rows.slice(0, 5).map((r) => `${r.name} (${r.label}): ${Number(r.margin)}% margin`),
-        action: { label: 'Review prices', to: '/prices' },
+        action: reviewAt,
       });
     }
 
@@ -110,14 +115,14 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       WHERE last.cost_base > cost.wac * 1.05
         AND (pk.sell_price / pk.qty_base - last.cost_base) / (pk.sell_price / pk.qty_base) < 0.10
       ORDER BY last.cost_base / cost.wac DESC`.execute(app.db);
-    if (rising.rows.length > 0) {
+    if (seesCosts && rising.rows.length > 0) {
       insights.push({
         id: 'cost-rising', area: 'Prices and margins', severity: 'medium',
         title: `${plural(rising.rows.length, 'item')} now cost more than they are priced for`,
         why: 'The latest delivery cost is well above the average, and at that cost the margin is under 10%. Once the older, cheaper stock is sold, these lose money.',
         figure: plural(rising.rows.length, 'item'),
         examples: rising.rows.slice(0, 5).map((r) => `${r.name}: last cost ${money(Number(r.last))} a unit (average ${money(Number(r.avg))}), sells ${money(Number(r.sell))}`),
-        action: { label: 'Review prices', to: '/prices' },
+        action: reviewAt,
       });
     }
 
@@ -133,14 +138,14 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       GROUP BY p.name, br.name
       HAVING -sum(m.qty_base) > 0
       ORDER BY sold DESC`.execute(app.db);
-    if (out.rows.length > 0) {
+    if (may('stock.read') && out.rows.length > 0) {
       insights.push({
         id: 'out-of-stock', area: 'Stock', severity: 'high',
         title: `${plural(out.rows.length, 'item')} selling but out of stock`,
         why: 'These sold in the last 30 days and have none left: every day out is sales lost to another shop.',
         figure: plural(out.rows.length, 'item'),
         examples: out.rows.slice(0, 5).map((r) => `${r.name} at ${r.branch}: ${Number(r.sold)} sold in 30 days, none left`),
-        action: { label: 'Reorder', to: '/reorder' },
+        action: may('po.write') ? { label: 'Reorder', to: '/reorder' } : { label: 'See stock on hand', to: '/stock' },
       });
     }
 
@@ -154,7 +159,7 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
         AND NOT EXISTS (SELECT 1 FROM stock_movement m WHERE m.product_id = s.product_id AND m.branch_id = s.branch_id
                         AND m.reason = 'sale' AND m.occurred_at >= now() - interval '90 days')`.execute(app.db);
     const d = dead.rows[0];
-    if (d !== undefined && Number(d.n) > 0) {
+    if (may('stock.read') && d !== undefined && Number(d.n) > 0) {
       insights.push({
         id: 'dead-stock', area: 'Stock', severity: Number(d.value) > 1000 ? 'high' : 'medium',
         title: `${money(Number(d.value))} in stock that has not sold for 90 days`,
@@ -174,14 +179,14 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       GROUP BY br.name
       ORDER BY lost DESC`.execute(app.db);
     const lostTotal = counts.rows.reduce((s, r) => s + Number(r.lost), 0);
-    if (lostTotal > 0) {
+    if (may('stock.read') && lostTotal > 0) {
       insights.push({
         id: 'count-losses', area: 'Stock', severity: lostTotal > 500 ? 'high' : 'medium',
         title: `${money(lostTotal)} lost at stock takes in 90 days`,
         why: 'Stock the books said was there and the count did not find. Look for patterns: the same items, the same branch, the same shift.',
         figure: money(lostTotal),
         examples: counts.rows.slice(0, 5).map((r) => `${r.branch}: ${money(Number(r.lost))} over ${plural(Number(r.lines), 'line')}`),
-        action: { label: 'See count variances', to: '/exceptions' },
+        action: may('exception.read') ? { label: 'See count variances', to: '/exceptions' } : { label: 'See the stock ledger', to: '/ledger' },
       });
     }
 
@@ -194,7 +199,7 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       GROUP BY pe.full_name
       ORDER BY short DESC`.execute(app.db);
     const shortTotal = short.rows.reduce((s, r) => s + Number(r.short), 0);
-    if (shortTotal > 0) {
+    if (may('cash.read') && may('exception.read') && shortTotal > 0) {
       const repeat = short.rows.filter((r) => Number(r.times) >= 3);
       insights.push({
         id: 'cash-short', area: 'Cash', severity: repeat.length > 0 ? 'high' : 'medium',
@@ -211,7 +216,7 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
       SELECT count(*)::int AS n, coalesce(max(extract(day from now() - occurred_at)), 0)::int AS oldest
       FROM exception_event WHERE branch_id = ANY(${b}) AND state = 'open' AND occurred_at < now() - interval '7 days'`.execute(app.db);
     const s0 = stale.rows[0];
-    if (s0 !== undefined && Number(s0.n) > 0) {
+    if (may('exception.read') && s0 !== undefined && Number(s0.n) > 0) {
       insights.push({
         id: 'stale-exceptions', area: 'Controls', severity: Number(s0.n) > 20 ? 'high' : 'medium',
         title: `${plural(Number(s0.n), 'exception')} open for over a week`,
@@ -231,7 +236,7 @@ export async function registerInsightRoutes(app: FastifyInstance): Promise<void>
            AND NOT EXISTS (SELECT 1 FROM product_pack k JOIN barcode bc ON bc.pack_id = k.id WHERE k.product_id = p.id))::int AS no_barcode,
         (SELECT count(*) FROM product p WHERE p.is_active AND p.review_state = 'pending')::int AS pending`.execute(app.db);
     const dq = data.rows[0];
-    if (dq !== undefined && Number(dq.no_price) + Number(dq.pending) > 0) {
+    if (may('product.read') && dq !== undefined && Number(dq.no_price) + Number(dq.pending) > 0) {
       const ex = [];
       if (Number(dq.no_price) > 0) ex.push(`${plural(Number(dq.no_price), 'item')} with no selling price - cannot be sold`);
       if (Number(dq.pending) > 0) ex.push(`${plural(Number(dq.pending), 'item')} added at the till, waiting for review`);

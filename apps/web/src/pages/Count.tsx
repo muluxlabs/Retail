@@ -173,7 +173,12 @@ export function Count() {
           }
           add(hit.productId, base);
           continue;
-        } catch {
+        } catch (e) {
+          // An archived item is named as such, not reported as "not found".
+          if (e instanceof ApiError && e.code === 'ITEM_ARCHIVED') {
+            bad.push(`Row ${i + 2} (${code}): ${e.message}`);
+            continue;
+          }
           /* not a barcode: try it as a SKU of an item not on the list */
         }
         const found = (await api.products({ search: code, limit: 5 })).items.find((p) => p.sku.toLowerCase() === code.toLowerCase());

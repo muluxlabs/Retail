@@ -54,7 +54,7 @@ export const SCREENS: Screen[] = [
   { to: '/payments', label: 'Supplier payments', area: 'Buying', description: 'Payments made to suppliers, with proof.', permission: ['supplier.read'], groupWide: true, keywords: 'pay proof transfer' },
   { to: '/owed', label: 'Owed to suppliers', area: 'Buying', description: 'Aged creditors: what is due and overdue.', permission: ['supplier.read'], groupWide: true, keywords: 'creditors payables ageing overdue' },
 
-  { to: '/insights', label: 'Insights', area: 'Reports and controls', description: 'What needs attention: prices below cost, items selling out, losses, cash short, stale exceptions.', permission: ['dashboard.read'], keywords: 'insights suggestions advice improve problems attention recommendations analysis' },
+  { to: '/insights', label: 'Insights', area: 'Reports and controls', description: 'What needs attention: prices below cost, items selling out, losses, cash short, stale exceptions.', permission: ['sale.read', 'stock.read'], keywords: 'insights suggestions advice improve problems attention recommendations analysis' },
   { to: '/profit', label: 'Sales and profit', area: 'Reports and controls', description: 'Trading account, margins, trends, by branch and category.', permission: ['sale.read'], keywords: 'report revenue gross profit margin sales' },
   { to: '/sales', label: 'Sales receipts', area: 'Reports and controls', description: 'Every receipt; open or reprint any of them.', permission: ['sale.read'], keywords: 'receipt reprint transactions' },
   { to: '/items', label: 'Item analysis', area: 'Reports and controls', description: 'Fast and slow sellers, days of cover, out of stock.', permission: ['sale.read'], keywords: 'item performance slow fast sell through' },

@@ -907,7 +907,7 @@ function EditProductForm({
               onChange={(e) => setIsActive(e.target.checked)}
               className="accent-accent-600 size-3.5"
             />
-            Active
+            Active <span className="text-ink-400">(untick to archive: hidden from the till and lists, history kept)</span>
           </label>
         </div>
       </div>

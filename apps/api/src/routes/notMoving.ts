@@ -15,7 +15,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
-import { assertInScope } from '../scope.js';
+import { assertInScope, scopedBranchIds } from '../scope.js';
 import { parseQuery } from '../validation.js';
 
 const query = z.object({
@@ -32,6 +32,9 @@ export async function registerNotMovingRoutes(app: FastifyInstance): Promise<voi
     assertInScope(request, q.branchId);
     const branch = await app.db.selectFrom('branch').select(['id', 'code', 'name', 'kind']).where('id', '=', q.branchId).executeTakeFirst();
     if (branch === undefined) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'No such branch.' } });
+    // Where else it sells, among the branches this person may see: a branch-scoped manager never sees another branch's figures.
+    const scope = scopedBranchIds(request);
+    const others = scope === null ? sql`true` : sql`branch_id = ANY(${scope}::uuid[])`;
 
     const rows = await sql<Record<string, unknown>>`
       WITH here AS (
@@ -47,7 +50,7 @@ export async function registerNotMovingRoutes(app: FastifyInstance): Promise<voi
         FROM (
           SELECT product_id, branch_id, -sum(qty_base) AS units
           FROM stock_movement
-          WHERE branch_id <> ${q.branchId}::uuid AND reason IN ('sale', 'sale_refund')
+          WHERE branch_id <> ${q.branchId}::uuid AND ${others} AND reason IN ('sale', 'sale_refund')
             AND occurred_at >= now() - make_interval(days => ${q.days})
           GROUP BY product_id, branch_id
           HAVING -sum(qty_base) > 0

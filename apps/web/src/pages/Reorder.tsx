@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { BuyingTabs } from '../components/BuyingTabs.js';
 import type { PurchaseLine } from '../components/PurchaseLines.js';
 import { api, type ReorderItem } from '../lib/api.js';
 import { useMyBranches } from '../lib/myBranches.js';
@@ -96,6 +97,7 @@ export function Reorder() {
 
   return (
     <div className="space-y-4">
+      <BuyingTabs />
       <div>
         <h1 className="text-lg font-semibold tracking-tight">Reorder</h1>
         <p className="text-ink-500 mt-0.5 max-w-3xl text-[12.5px]">

@@ -84,7 +84,7 @@ export async function wac(db: Db | Tx, productId: string, branchId: string): Pro
 /** An item archived from the item master: its history stays, but it is not sold. */
 export class ItemArchived extends DomainError {
   constructor(name: string, productId: string) {
-    super('ITEM_ARCHIVED', `“${name}” is archived. Restore it in the item master to sell it.`, { productId });
+    super('ITEM_ARCHIVED', `“${name}” is archived. Restore it in the item master before selling, receiving or counting it.`, { productId });
   }
 }
 
