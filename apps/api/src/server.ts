@@ -43,6 +43,7 @@ import { registerExportRoutes } from './routes/exports.js';
 import { registerReorderRoutes } from './routes/reorder.js';
 import { registerNotMovingRoutes } from './routes/notMoving.js';
 import { registerProductRemovalRoutes } from './routes/productRemoval.js';
+import { registerInsightRoutes } from './routes/insights.js';
 import { registerStockResetRoutes } from './routes/stockReset.js';
 import { registerStockRoutes } from './routes/stock.js';
 
@@ -122,6 +123,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       await api.register(registerReorderRoutes);
       await api.register(registerNotMovingRoutes);
       await api.register(registerProductRemovalRoutes);
+      await api.register(registerInsightRoutes);
       await api.register(registerSaleRoutes);
       await api.register(registerSalesReportRoutes);
       await api.register(registerProductReportRoutes);

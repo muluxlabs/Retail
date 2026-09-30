@@ -88,6 +88,17 @@ export interface Branch {
   isActive: boolean;
 }
 
+export interface Insight {
+  id: string;
+  area: string;
+  severity: 'high' | 'medium' | 'low';
+  title: string;
+  why: string;
+  figure: string;
+  examples: string[];
+  action: { label: string; to: string };
+}
+
 export interface RemovalPreview {
   items: { id: string; sku: string; name: string; action: 'delete' | 'archive' | 'already-archived'; reason: string; onHand: number }[];
   toDelete: number;
@@ -1600,6 +1611,9 @@ export const api = {
         byName: string;
       }[];
     }>('/api/products/imports'),
+
+  /** What the records say needs attention (dashboard.read). */
+  insights: (params: { branchId?: string } = {}) => request<{ insights: Insight[]; generatedAt: string }>(`/api/insights${qs(params)}`),
 
   /** Stock at a branch that is not selling there, and where it does sell (stock.read). */
   notMoving: (params: { branchId: string; days: number }) =>

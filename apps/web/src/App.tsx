@@ -41,6 +41,7 @@ import { Audit } from './pages/Audit.js';
 import { Exports } from './pages/Exports.js';
 import { Reorder } from './pages/Reorder.js';
 import { NotMoving } from './pages/NotMoving.js';
+import { Insights } from './pages/Insights.js';
 import { ItemImport } from './pages/ItemImport.js';
 import { RecordImport } from './pages/RecordImport.js';
 import { Users } from './pages/Users.js';
@@ -199,6 +200,7 @@ export function App() {
           <Route path="/exports" element={<Guard permission="data.export" home={home}><Exports /></Guard>} />
           <Route path="/reorder" element={<Guard permission="po.write" home={home}><Reorder /></Guard>} />
           <Route path="/not-moving" element={<Guard permission="stock.read" home={home}><NotMoving /></Guard>} />
+          <Route path="/insights" element={<Guard permission="dashboard.read" home={home}><Insights /></Guard>} />
           <Route path="/users/:id/access" element={<Guard permission="user.read" home={home}><UserAccessPage /></Guard>} />
           <Route path="/branches" element={<Guard permission="branch.manage" home={home}><Branches /></Guard>} />
           <Route path="/settings" element={<Guard permission="settings.manage" home={home}><Settings /></Guard>} />

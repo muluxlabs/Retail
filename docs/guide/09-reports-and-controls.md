@@ -1,5 +1,23 @@
 # 9. Reports and controls
 
+## Insights: what needs attention
+
+**Reports › Insights** reads the business's own records and lists what needs attention, most serious first (*Act now*, then *Worth a look*). Each card gives the figure, a few named examples, and a button to the screen where it is dealt with. Nothing is guessed: each is a plain rule, and a rule that finds nothing is not shown.
+
+| Insight | What it looks for | Where it is fixed |
+|---|---|---|
+| **Prices below cost** | A pack selling for less than it costs (average cost) | Prices |
+| **Margin under 5%** | Priced barely above cost | Prices |
+| **Costs rising** | The latest delivery cost is well above the average and, at that cost, the margin is under 10% | Prices |
+| **Selling but out of stock** | Sold in the last 30 days, none left at that branch | Reorder |
+| **Stock not selling** | Money in stock that has not sold for 90 days | Not moving |
+| **Stock-take losses** | Shortages found at counts in 90 days, by branch | Exceptions |
+| **Cash short** | Till and shift shortages in 90 days, by who was on the till - a name short three times or more is flagged | Exceptions |
+| **Exceptions left open** | Open for more than a week | Exceptions |
+| **Items that need finishing** | No selling price, waiting for review, or no barcode | Item master |
+
+Branch managers see their own branches; choose one branch or all of them at the top.
+
 ## The overview
 
 **Overview** is the first screen for managers and owners: today's trading, stock position and value, what is owed to suppliers, and the exceptions waiting — for the whole group or one branch. It works well on a phone.
