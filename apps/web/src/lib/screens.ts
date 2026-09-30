@@ -79,7 +79,7 @@ export const MAIN: { label: string; paths: string[] }[] = [
   { label: 'Cash', paths: ['/cash', '/shifts', '/day-close'] },
   { label: 'Buying', paths: ['/suppliers', '/reorder', '/orders', '/receive', '/returns', '/price-lists', '/payments', '/owed'] },
   { label: 'Stock', paths: ['/stock', '/not-moving', '/ledger', '/count', '/opening-stock', '/transfers'] },
-  { label: 'Reports', paths: ['/insights', '/profit', '/sales', '/items', '/reports'] },
+  { label: 'Reports', paths: ['/profit', '/sales', '/items', '/reports', '/insights'] },
   { label: 'Customers', paths: ['/customers', '/debtors', '/customers/import'] },
   { label: 'Exceptions', paths: ['/exceptions', '/audit'] },
   { label: 'Items', paths: ['/products', '/prices', '/products/import'] },

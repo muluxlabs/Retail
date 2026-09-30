@@ -13,6 +13,7 @@ const TABS = [
   { to: '/items', label: 'Item analysis', permission: 'sale.read' },
   { to: '/sales', label: 'Receipts', permission: 'sale.read' },
   { to: '/reports', label: 'Stock movement', permission: 'stock.read' },
+  { to: '/insights', label: 'Insights', permission: 'dashboard.read' },
 ] as const;
 
 export function ReportTabs() {

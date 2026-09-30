@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { ReportTabs } from '../components/ReportTabs.js';
 import { api, type Insight } from '../lib/api.js';
 import { useMyBranches } from '../lib/myBranches.js';
 import { Card, Empty, ErrorNote, Spinner, useAsync } from '../lib/ui.js';
@@ -24,6 +25,7 @@ export function Insights() {
 
   return (
     <div className="space-y-4">
+      <ReportTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Insights</h1>
